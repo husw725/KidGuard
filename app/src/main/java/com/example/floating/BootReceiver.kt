@@ -14,6 +14,7 @@ class BootReceiver : BroadcastReceiver() {
             } else {
                 context.startService(serviceIntent)
             }
+            ReportScheduler.scheduleDailyReport(context)
         }
     }
 }

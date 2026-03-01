@@ -40,6 +40,11 @@
         </receiver>
 
         <receiver
+            android:name=".ReportBroadcastReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <receiver
             android:name=".MyAdminReceiver"
             android:description="@string/app_name"
             android:label="@string/app_name"

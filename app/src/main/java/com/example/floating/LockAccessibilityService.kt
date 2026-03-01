@@ -7,10 +7,21 @@ import android.view.accessibility.AccessibilityEvent
 
 class LockAccessibilityService : AccessibilityService() {
 
+    companion object {
+        private var instance: LockAccessibilityService? = null
+
+        fun pressHome() {
+            instance?.let {
+                it.performGlobalAction(GLOBAL_ACTION_HOME)
+                android.widget.Toast.makeText(it, "时间到，正在返回桌面...", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
+        instance = this
         // 辅助服务连接成功，这里代表系统激活了我们。
-        // 我们利用这个不易被杀的服务来重新拉起我们的主锁屏服务。
         val serviceIntent = Intent(this, FloatingService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(serviceIntent)
@@ -25,5 +36,10 @@ class LockAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() {
         // 服务被中断
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        instance = null
     }
 }
