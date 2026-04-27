@@ -238,7 +238,10 @@ class FloatingService : Service() {
     }
 
     private fun startQuiz() {
-        val count = maxOf(10, QuestionBank.getTotalQuestionConfig(this))
+        var count = maxOf(5, QuestionBank.getTotalQuestionConfig(this))
+        if (QuestionBank.isFirstQuizToday(this)) {
+            count = maxOf(5, count / 2)
+        }
         currentQuestions = QuestionBank.getRandomQuestions(this, count)
         currentIndex = 0; correctCount = 0; wrongQuestionsList.clear()
         saveState(); showLockScreen(); showCurrentQuestion()
@@ -251,10 +254,18 @@ class FloatingService : Service() {
         quizProgressBar.max = currentQuestions.size
         quizProgressBar.progress = currentIndex
         tvQuestion.text = q.text
-        btnAns1.text = q.options.getOrNull(0) ?: ""
-        btnAns2.text = q.options.getOrNull(1) ?: ""
-        btnAns3.text = q.options.getOrNull(2) ?: ""
-        btnAns4.text = q.options.getOrNull(3) ?: ""
+        
+        val buttons = listOf(btnAns1, btnAns2, btnAns3, btnAns4)
+        buttons.forEachIndexed { index, button ->
+            val option = q.options.getOrNull(index)
+            if (option != null) {
+                button.text = option
+                button.visibility = View.VISIBLE
+            } else {
+                button.visibility = View.GONE
+            }
+        }
+        
         setButtonsEnabled(true); tvFeedback.visibility = View.INVISIBLE
     }
 
@@ -304,6 +315,7 @@ class FloatingService : Service() {
             }
 
             QuestionBank.recordUnlockEvent(this, minutes)
+            QuestionBank.markFirstQuizDoneToday(this)
 
             tvResultTitle.text = "挑战成功！🌟"; tvResultTitle.setTextColor(android.graphics.Color.WHITE)
             tvResultDesc.text = "得分: $score\n奖励解锁时间: $minutes 分钟"

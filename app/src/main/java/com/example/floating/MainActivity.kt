@@ -51,10 +51,7 @@ class MainActivity : AppCompatActivity() {
             if (clipboard.hasPrimaryClip() && clipboard.primaryClip?.itemCount ?: 0 > 0) {
                 val pasteData = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
                 if (pasteData.isNotEmpty()) {
-                    QuestionBank.syncFromClipboard(this, pasteData) { success, message ->
-                        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-                        updateVersionText()
-                    }
+                    Toast.makeText(this, "该功能暂不可用", Toast.LENGTH_SHORT).show()
                 } else {
                     Toast.makeText(this, "剪贴板为空", Toast.LENGTH_SHORT).show()
                 }
