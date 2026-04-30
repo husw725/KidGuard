@@ -31,12 +31,17 @@ object ThinkingMathGenerator {
     private val typeNames = listOf("treePlanting","sawLog","ageProblem","queueProblem","ropeProblem",
         "numberPattern","sumMultiple","chickenRabbit","matchstick","reverseProblem","circleProblem","stairsProblem")
 
-    fun generateWeighted(seen: Map<String, Int>, errors: Map<String, Int>): Question {
+    fun generateWeighted(seenRound: Map<String, Int>, errors: Map<String, Int>): Question {
+        // 用当前轮次减去 lastSeenRound 算 missed，但这里没有 currentRound
+        // 改用 seenRound 差值比较：轮次号越小（越早），权重越高
+        // 为简化：直接用 seenRound 的差值来排序
+        val maxRound = (seenRound.values.maxOrNull() ?: 0)
         val weights = typeNames.map { tn ->
             val key = "thinking-$tn"
-            val s = seen[key] ?: 0
+            val lastSeen = seenRound[key] ?: 0
+            val missed = if (lastSeen > 0) maxRound - lastSeen else maxRound + 1
             val e = errors[key] ?: 0
-            s * 2 + e * 5 + 1
+            missed * 2 + e * 5 + 1
         }
         val total = weights.sum()
         var r = Random.nextInt(total)

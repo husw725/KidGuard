@@ -17,12 +17,14 @@ object OlympiadMathGenerator {
     var lastGeneratedType: String = ""
     private val olympiadTypeNames = listOf("periodicity", "sequencePattern", "algebraicReasoning")
 
-    fun generateWeighted(seen: Map<String, Int>, errors: Map<String, Int>): Question {
+    fun generateWeighted(seenRound: Map<String, Int>, errors: Map<String, Int>): Question {
+        val maxRound = (seenRound.values.maxOrNull() ?: 0)
         val weights = olympiadTypeNames.map { tn ->
             val key = "olympiad-$tn"
-            val s = seen[key] ?: 0
+            val lastSeen = seenRound[key] ?: 0
+            val missed = if (lastSeen > 0) maxRound - lastSeen else maxRound + 1
             val e = errors[key] ?: 0
-            s * 2 + e * 5 + 1
+            missed * 2 + e * 5 + 1
         }
         val total = weights.sum()
         var r = Random.nextInt(total)
