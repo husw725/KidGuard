@@ -166,7 +166,11 @@ object QuestionBank {
         "adv_climb_stairs", "adv_circle_flower", "adv_age_diff", "adv_age_sum",
         "adv_unit_convert", "adv_boat_rent", "adv_buy_notebook", "adv_color_pattern",
         "adv_approximate", "adv_multiply_compare", "adv_multiple_sum", "adv_basket_balls",
-        "adv_age_multiple"
+        "adv_age_multiple",
+        // 新增 10 种
+        "adv_clock_reading", "adv_time_calc", "adv_directions", "adv_money_convert",
+        "adv_combination", "adv_digit_puzzle", "adv_statistics", "adv_observe_3d",
+        "adv_simple_equation", "adv_remainder_app"
     )
     var lastGeneratedOldMathType: String = ""
 
@@ -293,7 +297,7 @@ object QuestionBank {
     }
 
     private fun generateAdvancedMathQuestion(typeIdx: Int = -1): Pair<Question, String> {
-        val idx = if (typeIdx >= 0) typeIdx else Random.nextInt(17)
+        val idx = if (typeIdx >= 0) typeIdx else Random.nextInt(27)
         val q = when (idx) {
         0 -> { val a = Random.nextInt(3, 12); val b = Random.nextInt(3, 12); createMathQ("小朋友排队，小欣从左数第 $a 个，从右数第 $b 个，这一排共有多少人？", a + b - 1) }
         1 -> { val total = Random.nextInt(15, 30); val a = Random.nextInt(5, 12); createMathQ("一排共有 $total 个小朋友，小欣从左边数是第 $a 个，从右数她是第几个？", total - a + 1) }
@@ -328,9 +332,20 @@ object QuestionBank {
         13 -> { val a = Random.nextInt(3, 7); val b = Random.nextInt(3, 7); val left = a * b; val right = (a + 1) * (b - 1); val op = if (left > right) ">" else if (left < right) "<" else "="; createQuestion("$a × $b [ ] ${a + 1} × ${b - 1}", op, listOf(">", "<", "=").filter { it != op }) }
         14 -> { val m = Random.nextInt(3, 8); val n = Random.nextInt(2, 4); createMathQ("小明有 $m 个苹果，小红的苹果数是小明的 $n 倍，两人共有多少个苹果？", m * (n + 1)) }
         15 -> { val yellow = Random.nextInt(3, 8); val n = Random.nextInt(3, 6); createMathQ("筐里有红球和黄球，黄球有 $yellow 个，红球数量是黄球的 $n 倍，红球有多少个？", yellow * n) }
-        else -> { val son = Random.nextInt(4, 9); val n = Random.nextInt(3, 6); val dad = son * n; createMathQ("今年爸爸 $dad 岁，小欣 $son 岁，爸爸的年龄是小欣的多少倍？", n) }
+        16 -> { val son = Random.nextInt(4, 9); val n = Random.nextInt(3, 6); val dad = son * n; createMathQ("今年爸爸 $dad 岁，小欣 $son 岁，爸爸的年龄是小欣的多少倍？", n) }
+        // 新增 10 种题型 (idx 17-26)
+        17 -> { val h = Random.nextInt(1, 12); val m_choices = listOf(0, 15, 30, 45); val m = m_choices.random(); val m_str = if (m == 0) "12" else if (m == 15) "3" else if (m == 30) "6" else "9"; createQuestion("钟面上时针指向 $h，分针指向 $m_str，现在是 ( )", "$h:${if (m == 0) "00" else "$m"}", listOf("$h:${if (m == 0) "30" else "00"}", "${if (h < 12) h + 1 else 1}:00", "$h:55")) }
+        18 -> { val start_h = Random.nextInt(7, 10); val mins = Random.nextInt(1, 4) * 15; val end_h = start_h + mins / 60; val end_m = mins % 60; createQuestion("小欣 $start_h:00 开始写作业，写了 $mins 分钟，( ) 写完。", "$end_h:${if (end_m == 0) "00" else "$end_m"}", listOf("$start_h:${if (end_m == 0) "30" else "00"}", "$end_h:10", "$end_h:50")) }
+        19 -> { val directions = listOf(Triple("北", "南"), Triple("东", "西"), Triple("南", "北"), Triple("西", "东")); val d = directions.random(); createQuestion("小明面向${d.first}，他的后面是什么方向？", d.second, listOf("东", "西", "南", "北").filter { it != d.second }) }
+        20 -> { val yuan = Random.nextInt(1, 10); val jiao = listOf(0, 5, 50); val target = jiao[Random.nextInt(3)]; if (target == 0) { createQuestion("$yuan 元 = ( ) 角", "${yuan * 10}", listOf("${yuan * 5}", "${yuan * 100}", "${yuan * 2}")) } else { val total_jiao = yuan * 10 + target; createQuestion("$yuan 元 $target 角 = ( ) 角", "$total_jiao", listOf("${yuan * 10}", "${total_jiao + 5}", "${total_jiao - 5}")) } }
+        21 -> { val digits = listOf(1, 2, 3); val total = digits.size * (digits.size - 1); createQuestion("用 1、2、3 三个数字可以组成 ( ) 个没有重复数字的两位数。", "$total", listOf("${total - 1}", "${total + 1}", "${total + 2}")) }
+        22 -> { val a = Random.nextInt(1, 5); val b = Random.nextInt(2, 9); val sum_units = a + b; val carry = if (sum_units >= 10) 1 else 0; val ans = sum_units % 10; val sum_tens = carry; createQuestion("${a}$b + $carry = ${sum_tens}${ans}，方框里是 ( )", "$ans", listOf("${(ans + 1) % 10}", "${(ans + 2) % 10}", "${(ans + 3) % 10}")) }
+        23 -> { val a = Random.nextInt(8, 15); val b_val = a + Random.nextInt(1, 5); val c_val = b_val + Random.nextInt(1, 5); createQuestion("小明跳了 $a 下，小红比小明多跳 3 下，小兰比小红多跳 2 下，小兰跳了 ( ) 下。", "${a + 5}", listOf("${a + 3}", "${a + 2}", "${a + 4}")) }
+        24 -> { val shapes = listOf(Triple("正方体", "1"), Triple("长方体", "6"), Triple("圆柱", "2")); val s = shapes.random(); createQuestion("${s.first}有几个面？", s.second, listOf("4", "6", "8", "10").filter { it != s.second }.take(3)) }
+        25 -> { val x = Random.nextInt(5, 20); val add = Random.nextInt(10, 30); val total = x + add; createQuestion("一个数加上 $add 等于 $total，这个数是 ( )", "$x", listOf("${x + 1}", "${x + 2}", "${x - 1}")) }
+        26 -> { val total_apples = Random.nextInt(10, 30); val kids = Random.nextInt(3, 7); val quotient = total_apples / kids; val rem = total_apples % kids; createQuestion("$total_apples 个苹果平均分给 $kids 个小朋友，每人 ${quotient} 个，还剩 ( ) 个。", "$rem", listOf("${if (rem > 0) rem - 1 else 1}", "${rem + 1}", "${rem + 2}")) }
         }
-        val typeName = if (idx < 17) "old-" + advancedTypeNames[idx] else "old-" + advancedTypeNames[16]
+        val typeName = if (idx < 27) "old-" + advancedTypeNames[idx] else "old-" + advancedTypeNames[26]
         lastGeneratedOldMathType = typeName
         return Pair(q, typeName)
     }
@@ -460,6 +475,17 @@ object QuestionBank {
             "平移" in text || "旋转" in text -> "old-grade2_motion"
             "百位" in text || "千位" in text -> "old-grade2_digits"
             "×" in text && "+" in text -> "old-grade2_mix"
+            // 新增 10 种
+            "钟面" in text || "时针" in text || "分针" in text -> "old-adv_clock_reading"
+            "开始写" in text && "分钟" in text && "写完" in text -> "old-adv_time_calc"
+            "面向" in text && "后面" in text -> "old-adv_directions"
+            "元" in text && "角" in text && ("=" in text || "等于" in text) -> "old-adv_money_convert"
+            "组成" in text && "两位数" in text -> "old-adv_combination"
+            "方框" in text && "+" in text -> "old-adv_digit_puzzle"
+            "跳了" in text && "多跳" in text -> "old-adv_statistics"
+            "几个面" in text || "正方体" in text || "长方体" in text -> "old-adv_observe_3d"
+            "一个数加上" in text && "这个数" in text -> "old-adv_simple_equation"
+            "平均分给" in text && "还剩" in text -> "old-adv_remainder_app"
             else -> null
         }
     }
