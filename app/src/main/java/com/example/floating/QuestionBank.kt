@@ -226,9 +226,9 @@ object QuestionBank {
     private fun generateVerbalLogicQuestion(): Question = when (Random.nextInt(6)) {
         0 -> { val categories = listOf(listOf("苹果", "香蕉", "西瓜", "青菜"), listOf("老虎", "狮子", "灰狼", "菊花"), listOf("铅笔", "书包", "尺子", "雨鞋"), listOf("燕子", "喜鹊", "大雁", "松鼠"), listOf("白云", "星星", "太阳", "操场"), listOf("跳高", "跑步", "打球", "读书")); val cat = categories.random(); createQuestion("找出不是同一类的词：", cat.last(), cat.dropLast(1)) }
         1 -> { val items = listOf(Triple("日", "月", "明"), Triple("女", "马", "妈"), Triple("人", "木", "休"), Triple("口", "十", "叶"), Triple("门", "口", "问"), Triple("木", "木", "林"), Triple("小", "大", "尖"), Triple("口", "天", "吴"), Triple("立", "占", "站"), Triple("讠", "也", "说")); val item = items.random(); val allWrongs = "好男认写字校学们位明".map { it.toString() }.filter { it != item.third }; createQuestion("${item.first} + ${item.second} = ( )", item.third, allWrongs.shuffled().take(3)) }
-        2 -> { val m = listOf("一( )画" to "幅", "一( )马" to "匹", "一( )雷声" to "声", "一( )小路" to "条").random(); createQuestion(m.first, m.second, listOf("个", "只", "片", "朵").filter { it != m.second }) }
+        2 -> { val m = listOf("一( )画" to "幅", "一( )马" to "匹", "一( )雷声" to "声", "一( )小路" to "条").random(); createQuestion(m.first, m.second, listOf("个", "只", "片").shuffled().take(3)) }
         3 -> { val r = listOf("“春天像个害羞的小姑娘”是( )句" to "比喻", "“小树在风中点头”是( )句" to "拟人").random(); createQuestion(r.first, r.second, listOf("夸张", "排比", "反问").filter { it != r.second }) }
-        4 -> { val c = listOf("端午节吃( )" to "粽子", "元宵节吃( )" to "元宵", "春节是( )的开始" to "一年").random(); createQuestion(c.first, c.second, listOf("月饼", "饺子", "春分", "大暑").filter { it != c.second }) }
+        4 -> { val c = listOf("端午节吃( )" to "粽子", "元宵节吃( )" to "元宵", "春节是( )的开始" to "一年").random(); createQuestion(c.first, c.second, listOf("月饼", "饺子", "春分")) }
         else -> { val y = listOf("《亡羊补牢》告诉我们要( )" to "及时改正错误", "《揠苗助长》告诉我们不能( )" to "急于求成").random(); createQuestion(y.first, y.second, listOf("努力学习", "尊敬师长", "勤俭节约").filter { it != y.second }) }
     }
 
