@@ -188,8 +188,8 @@ object QuestionBank {
         return selectedQuestions.toList().shuffled()
     }
 
-    private fun generateMathQuestion(): Question = when (Random.nextInt(12)) {
-        in 0..8 -> generateGrade2Math(Random.nextInt(7))
+    private fun generateMathQuestion(): Question = when (Random.nextInt(10)) {
+        in 0..3 -> generateGrade2Math(Random.nextInt(7))
         else -> generateAdvancedMathQuestion()
     }
 
