@@ -222,7 +222,7 @@ object QuestionBank {
         }
 
         // 更新：把本局抽中的语文题 lastSeenRound = currentRound + 1
-        val selectedTexts = selected.map { it.text }.toSet()
+        val selectedTexts = selectedQuestions.map { it.text }.toSet()
         for (text in selectedTexts) {
             if (isStaticQuestion(text)) {
                 lastSeenRound[text] = currentRound + 1
