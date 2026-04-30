@@ -156,6 +156,20 @@ object QuestionBank {
         return createQuestion("${p.first}\n\n问题：${p.second}", p.third.first(), p.third.drop(1))
     }
 
+        // 旧数学题子类型名称
+    private val grade2TypeNames = listOf(
+        "grade2_add_sub", "grade2_multiply", "grade2_divide_rem", "grade2_weight",
+        "grade2_motion", "grade2_digits", "grade2_mix"
+    )
+    private val advancedTypeNames = listOf(
+        "adv_queue_left_right", "adv_queue_total", "adv_tree_planting", "adv_saw_log",
+        "adv_climb_stairs", "adv_circle_flower", "adv_age_diff", "adv_age_sum",
+        "adv_unit_convert", "adv_boat_rent", "adv_buy_notebook", "adv_color_pattern",
+        "adv_approximate", "adv_multiply_compare", "adv_multiple_sum", "adv_basket_balls",
+        "adv_age_multiple"
+    )
+    var lastGeneratedOldMathType: String = ""
+
     fun getRandomQuestions(context: Context, count: Int): List<Question> {
         loadLocalData(context)
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -199,7 +213,7 @@ object QuestionBank {
             }
         }
 
-        // 3. Math — weighted by type missed rounds
+        // 3. Math — weighted by sub-type missed rounds (27 sub-types total)
         val mathTypeMissed = { typeName: String ->
             currentRound - (mathTypeSeenRound[typeName] ?: 0)
         }
@@ -210,15 +224,11 @@ object QuestionBank {
         if (selectedQuestions.size < count) {
             selectedQuestions.add(OlympiadMathGenerator.generateWeighted(mathTypeSeenRound, mathTypeErrors))
         }
+        // 旧数学题：按22种子类型加权选择
         while (selectedQuestions.size < count) {
-            val advMissed = mathTypeMissed("advanced")
-            val grade2Missed = mathTypeMissed("grade2")
-            val total = maxOf(1, advMissed) + maxOf(1, grade2Missed)
-            if (Random.nextInt(total) < maxOf(1, advMissed)) {
-                selectedQuestions.add(generateAdvancedMathQuestion())
-            } else {
-                selectedQuestions.add(generateGrade2Math(Random.nextInt(7)))
-            }
+            val (q, typeName) = selectOldMathByWeight()
+            selectedQuestions.add(q)
+            mathTypeSeenRound[typeName] = currentRound + 1
         }
 
         // 更新：把本局抽中的语文题 lastSeenRound = currentRound + 1
@@ -228,16 +238,14 @@ object QuestionBank {
                 lastSeenRound[text] = currentRound + 1
             }
         }
-        // 数学题型
+        // 数学题型 - ThinkingMath 和 Olympiad 已在加权选择中记录
         if (ThinkingMathGenerator.lastGeneratedType.isNotEmpty()) {
             mathTypeSeenRound[ThinkingMathGenerator.lastGeneratedType] = currentRound + 1
         }
         if (OlympiadMathGenerator.lastGeneratedType.isNotEmpty()) {
             mathTypeSeenRound[OlympiadMathGenerator.lastGeneratedType] = currentRound + 1
         }
-        // 旧数学题：如果本局有出，标记为当前轮
-        mathTypeSeenRound["advanced"] = maxOf(mathTypeSeenRound["advanced"] ?: 0, currentRound + 1)
-        mathTypeSeenRound["grade2"] = maxOf(mathTypeSeenRound["grade2"] ?: 0, currentRound + 1)
+        // 旧数学题已在加权选择循环中记录子类型轮次
 
         // 持久化
         val lsObj = JSONObject()
@@ -260,12 +268,32 @@ object QuestionBank {
         return (builtinVerbalQuestions + ThinkingChineseQuestions.questions).any { it.text == text }
     }
 
-    private fun generateMathQuestion(): Question = when (Random.nextInt(10)) {
-        in 0..3 -> generateGrade2Math(Random.nextInt(7))
-        else -> generateAdvancedMathQuestion()
+    private fun selectOldMathByWeight(): Pair<Question, String> {
+        val allOldTypes = grade2TypeNames.map { "old-$it" } + advancedTypeNames.map { "old-$it" }
+        val weights = allOldTypes.map { tn ->
+            val lastSeen = mathTypeSeenRound[tn] ?: 0
+            val missed = currentRound - lastSeen
+            val errs = mathTypeErrors[tn] ?: 0
+            missed * 2 + errs * 5 + 1
+        }
+        val total = weights.sum()
+        var r = Random.nextInt(total)
+        var idx = 0
+        for (w in weights) {
+            r -= w
+            if (r < 0) break
+            idx++
+        }
+        return if (idx < grade2TypeNames.size) {
+            generateGrade2Math(idx)
+        } else {
+            generateAdvancedMathQuestion(idx - grade2TypeNames.size)
+        }
     }
 
-    private fun generateAdvancedMathQuestion(): Question = when (Random.nextInt(17)) {
+    private fun generateAdvancedMathQuestion(typeIdx: Int = -1): Pair<Question, String> {
+        val idx = if (typeIdx >= 0) typeIdx else Random.nextInt(17)
+        val q = when (idx) {
         0 -> { val a = Random.nextInt(3, 12); val b = Random.nextInt(3, 12); createMathQ("小朋友排队，小欣从左数第 $a 个，从右数第 $b 个，这一排共有多少人？", a + b - 1) }
         1 -> { val total = Random.nextInt(15, 30); val a = Random.nextInt(5, 12); createMathQ("一排共有 $total 个小朋友，小欣从左边数是第 $a 个，从右数她是第几个？", total - a + 1) }
         2 -> { val dist = Random.nextInt(3, 8); val gap = Random.nextInt(2, 5); createMathQ("在一条长 ${dist * gap} 米的小路一边种树，每隔 $gap 米种一棵（两端都种），共需多少棵？", dist + 1) }
@@ -300,6 +328,10 @@ object QuestionBank {
         14 -> { val m = Random.nextInt(3, 8); val n = Random.nextInt(2, 4); createMathQ("小明有 $m 个苹果，小红的苹果数是小明的 $n 倍，两人共有多少个苹果？", m * (n + 1)) }
         15 -> { val yellow = Random.nextInt(3, 8); val n = Random.nextInt(3, 6); createMathQ("筐里有红球和黄球，黄球有 $yellow 个，红球数量是黄球的 $n 倍，红球有多少个？", yellow * n) }
         else -> { val son = Random.nextInt(4, 9); val n = Random.nextInt(3, 6); val dad = son * n; createMathQ("今年爸爸 $dad 岁，小欣 $son 岁，爸爸的年龄是小欣的多少倍？", n) }
+        }
+        val typeName = if (idx < 17) "old-" + advancedTypeNames[idx] else "old-" + advancedTypeNames[16]
+        lastGeneratedOldMathType = typeName
+        return Pair(q, typeName)
     }
 
     private fun generateVerbalLogicQuestion(): Question = when (Random.nextInt(6)) {
@@ -325,7 +357,9 @@ object QuestionBank {
         else -> { val q = listOf("要是你在野外迷了路，中午时太阳在 ( ) 边。" to "南", "北极星所在的方向是 ( ) 方。" to "北").random(); createQuestion(q.first, q.second, listOf("东", "西", "南", "北").filter { it != q.second }) }
     }
 
-    private fun generateGrade2Math(type: Int): Question = when (type) {
+    private fun generateGrade2Math(type: Int = -1): Pair<Question, String> {
+        val idx = if (type >= 0) type else Random.nextInt(7)
+        val q = when (idx) {
         0 -> { val a = Random.nextInt(10, 90); val b = Random.nextInt(10, 90); if (Random.nextBoolean()) createMathQ("$a + $b = ?", a + b) else createMathQ("${maxOf(a, b)} - ${minOf(a, b)} = ?", maxOf(a, b) - minOf(a, b)) }
         1 -> { val a = Random.nextInt(2, 10); val b = Random.nextInt(2, 10); createMathQ("$a × $b = ?", a * b) }
         2 -> { val divisor = Random.nextInt(3, 9); val quotient = Random.nextInt(2, 8); val rem = Random.nextInt(1, divisor); createQuestion("${divisor * quotient + rem} ÷ $divisor = ?", "${quotient}余${rem}", listOf("${quotient}余${(rem+1)%divisor}", "${quotient+1}余${rem}", "${quotient-1}余${rem}")) }
@@ -333,6 +367,10 @@ object QuestionBank {
         4 -> { val items = listOf("电风扇叶片转动" to "旋转", "升国旗" to "平移", "拨算盘珠子" to "平移", "推拉窗户" to "平移"); val item = items.random(); createQuestion("${item.first}属于( )现象", item.second, listOf("旋转", "平移", "轴对称").filter { it != item.second }) }
         5 -> { val th = Random.nextInt(1, 10); val h = Random.nextInt(0, 10); val t = Random.nextInt(1, 10); val o = Random.nextInt(0, 10); val num = th * 1000 + h * 100 + t * 10 + o; createQuestion("$num 的百位是 ( )", "$h", listOf("${(h + 1) % 10}", "${(h + 2) % 10}", "${(h + 3) % 10}")) }
         else -> { val a = Random.nextInt(2, 9); val b = Random.nextInt(2, 9); val c = Random.nextInt(2, 20); if (Random.nextBoolean()) createMathQ("$a × $b + $c = ?", a * b + c) else createMathQ("${maxOf(a*b, c)} - ${minOf(a*b, c)} = ?", Math.abs(a * b - c)) }
+        }
+        val typeName = if (idx < 7) "old-" + grade2TypeNames[idx] else "old-" + grade2TypeNames[6]
+        lastGeneratedOldMathType = typeName
+        return Pair(q, typeName)
     }
 
     private fun createMathQ(text: String, answer: Int): Question {
@@ -394,15 +432,33 @@ object QuestionBank {
         }
     }
 
-    // 根据题目文本检测数学题型
+    // 根据题目文本检测数学题型（细粒度）
     private fun detectMathType(text: String): String? {
         return when {
-            "植树" in text || "种树" in text -> "grade2"
-            "锯" in text -> "grade2"
-            "排队" in text || "左数" in text || "右数" in text -> "advanced"
-            "年龄" in text || "岁" in text && ("倍" in text || "差" in text) -> "advanced"
-            "近似数" in text -> "advanced"
-            "百位" in text || "千位" in text -> "grade2"
+            "从左数" in text && "从右数" in text -> "old-adv_queue_left_right"
+            "排队" in text && "共有" in text -> "old-adv_queue_total"
+            "种树" in text -> "old-adv_tree_planting"
+            "锯" in text -> "old-adv_saw_log"
+            "楼" in text && "秒" in text -> "old-adv_climb_stairs"
+            "圆圈" in text && "花" in text -> "old-adv_circle_flower"
+            "岁" in text && ("大多少岁" in text || "几年后" in text && "倍" in text) -> "old-adv_age_diff"
+            "年龄和" in text -> "old-adv_age_sum"
+            "米" in text && "厘米" in text -> "old-adv_unit_convert"
+            "划船" in text || "租" in text && "船" in text -> "old-adv_boat_rent"
+            "本子" in text && "最多可以买" in text -> "old-adv_buy_notebook"
+            "规律排列" in text && "色" in text -> "old-adv_color_pattern"
+            "近似数" in text -> "old-adv_approximate"
+            "×" in text && "[" in text -> "old-adv_multiply_compare"
+            "倍" in text && "共有" in text -> "old-adv_multiple_sum"
+            "球" in text && "倍" in text -> "old-adv_basket_balls"
+            "岁" in text && "多少倍" in text -> "old-adv_age_multiple"
+            "+" in text && "=" in text && "×" !in text -> "old-grade2_add_sub"
+            "×" in text && "÷" !in text && "=" in text -> "old-grade2_multiply"
+            "÷" in text && "余" in text -> "old-grade2_divide_rem"
+            "千克" in text || "克" in text -> "old-grade2_weight"
+            "平移" in text || "旋转" in text -> "old-grade2_motion"
+            "百位" in text || "千位" in text -> "old-grade2_digits"
+            "×" in text && "+" in text -> "old-grade2_mix"
             else -> null
         }
     }
