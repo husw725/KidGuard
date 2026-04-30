@@ -13,6 +13,32 @@ object OlympiadMathGenerator {
             else -> generateAlgebraicReasoning() // 简单代数推理
         }
     }
+    // 加权版本
+    var lastGeneratedType: String = ""
+    private val olympiadTypeNames = listOf("periodicity", "sequencePattern", "algebraicReasoning")
+
+    fun generateWeighted(seen: Map<String, Int>, errors: Map<String, Int>): Question {
+        val weights = olympiadTypeNames.map { tn ->
+            val key = "olympiad-$tn"
+            val s = seen[key] ?: 0
+            val e = errors[key] ?: 0
+            s * 2 + e * 5 + 1
+        }
+        val total = weights.sum()
+        var r = Random.nextInt(total)
+        var idx = 0
+        for (w in weights) {
+            r -= w
+            if (r < 0) break
+            idx++
+        }
+        lastGeneratedType = "olympiad-${olympiadTypeNames[idx]}"
+        return when (idx) {
+            0 -> generatePeriodicity()
+            1 -> generateSequencePattern()
+            else -> generateAlgebraicReasoning()
+        }
+    }
 
     private fun createQuestion(text: String, correct: String, wrongs: List<String>): Question {
         val uniqueWrongs = wrongs.filter { it != correct }.distinct().toMutableList()

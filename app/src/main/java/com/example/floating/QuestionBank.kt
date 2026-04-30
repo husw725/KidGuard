@@ -75,9 +75,16 @@ object QuestionBank {
     private const val KEY_DAILY_DATA_TIMESTAMP = "DailyDataTimestamp"
     private const val KEY_LAST_QUIZ_DATE = "LastQuizDate"
     private const val KEY_TOTAL_QUESTIONS = "TotalQuestions"
+    private const val KEY_LAST_SEEN_COUNT = "LastSeenCount"
+    private const val KEY_MATH_TYPE_SEEN = "MathTypeSeen"
+    private const val KEY_MATH_TYPE_ERRORS = "MathTypeErrors"
+    private const val KEY_QUIZ_ROUND = "QuizRound"
 
     private val cloudQuestions = mutableListOf<Question>()
     private val errorRecords = mutableMapOf<String, Int>()
+    private val lastSeenCount = mutableMapOf<String, Int>()       // 语文题上次出现距今轮数
+    private val mathTypeSeen = mutableMapOf<String, Int>()          // 数学题型上次出现距今轮数
+    private val mathTypeErrors = mutableMapOf<String, Int>()        // 数学题型答错次数
 
     private fun loadLocalData(context: Context) {
         cloudQuestions.clear()
@@ -97,6 +104,27 @@ object QuestionBank {
             for (key in obj.keys()) {
                 errorRecords[key] = obj.getInt(key)
             }
+        } catch (e: Exception) {}
+
+        lastSeenCount.clear()
+        val lss = prefs.getString(KEY_LAST_SEEN_COUNT, "{}") ?: "{}"
+        try {
+            val obj = JSONObject(lss)
+            for (key in obj.keys()) lastSeenCount[key] = obj.getInt(key)
+        } catch (e: Exception) {}
+
+        mathTypeSeen.clear()
+        val mts = prefs.getString(KEY_MATH_TYPE_SEEN, "{}") ?: "{}"
+        try {
+            val obj = JSONObject(mts)
+            for (key in obj.keys()) mathTypeSeen[key] = obj.getInt(key)
+        } catch (e: Exception) {}
+
+        mathTypeErrors.clear()
+        val mte = prefs.getString(KEY_MATH_TYPE_ERRORS, "{}") ?: "{}"
+        try {
+            val obj = JSONObject(mte)
+            for (key in obj.keys()) mathTypeErrors[key] = obj.getInt(key)
         } catch (e: Exception) {}
     }
 
@@ -130,6 +158,8 @@ object QuestionBank {
 
     fun getRandomQuestions(context: Context, count: Int): List<Question> {
         loadLocalData(context)
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val currentRound = prefs.getInt(KEY_QUIZ_ROUND, 0)
         // 合并所有语文题库：内置 + 云题目 + 拓展题
         val allVerbalPool = (cloudQuestions + builtinVerbalQuestions + ThinkingChineseQuestions.questions).distinctBy { it.text }
         val selectedQuestions = mutableSetOf<Question>()
@@ -146,9 +176,14 @@ object QuestionBank {
             if (selectedQuestions.none { it.text == q.text }) selectedQuestions.add(q)
         }
         
-        // 2. Fill remaining verbal questions (weighted pool with error records)
+        // 2. Fill remaining verbal questions — weighted by lastSeenCount + errors
+        // 权重 = (lastSeenCount * 2) + (errorCount * 5) + 1（保底权重1）
         val weightedPool = allVerbalPool.filter { q -> selectedQuestions.none { it.text == q.text } }
-            .map { q -> Pair(q, 1 + (errorRecords[q.text] ?: 0) * 3) }
+            .map { q ->
+                val seen = lastSeenCount[q.text] ?: currentRound  // 从未出现过的题，seen = 当前轮数（最大权重）
+                val errs = errorRecords[q.text] ?: 0
+                Pair(q, seen * 2 + errs * 5 + 1)
+            }
             .toMutableList()
             
         while (selectedQuestions.size < verbalLimit && weightedPool.isNotEmpty()) {
@@ -165,27 +200,78 @@ object QuestionBank {
             }
         }
         
-        // 3. Math Questions — mix old generators with new thinking math
+        // 3. Math Questions — weighted by type (less seen = lower weight)
         val mathNeeded = count - selectedQuestions.size
-        // 强制插入至少 1 道 ThinkingMath 题
         if (mathNeeded > 0) {
-            selectedQuestions.add(ThinkingMathGenerator.generate())
+            selectedQuestions.add(ThinkingMathGenerator.generateWeighted(mathTypeSeen, mathTypeErrors))
         }
-        // 也保留旧奥数生成器
         if (selectedQuestions.size < count) {
-            selectedQuestions.add(OlympiadMathGenerator.generate())
+            selectedQuestions.add(OlympiadMathGenerator.generateWeighted(mathTypeSeen, mathTypeErrors))
         }
-
-        while(selectedQuestions.size < count) {
-            // 新旧数学题混合：3/5 用新思维题，2/5 用旧生成器
+        while (selectedQuestions.size < count) {
             if (Random.nextInt(5) < 3) {
-                selectedQuestions.add(ThinkingMathGenerator.generate())
+                selectedQuestions.add(ThinkingMathGenerator.generateWeighted(mathTypeSeen, mathTypeErrors))
             } else {
-                selectedQuestions.add(generateMathQuestion())
+                selectedQuestions.add(weightedMathQuestion(currentRound))
             }
         }
         
+        // 更新 lastSeenCount 和 mathTypeSeen（未抽中的+1，抽中的重置为0）
+        updateAfterRound(selectedQuestions, currentRound + 1, prefs)
+        
         return selectedQuestions.toList().shuffled()
+    }
+
+    // 加权版本的旧数学题生成
+    private fun weightedMathQuestion(currentRound: Int): Question {
+        val advWeight = (16 - (mathTypeSeen["advanced"] ?: currentRound) * 2)  // 高级题
+        val grade2Weight = (7 - (mathTypeSeen["grade2"] ?: currentRound) * 2)     // 基础题
+        val total = maxOf(1, advWeight) + maxOf(1, grade2Weight)
+        val r = Random.nextInt(total)
+        return if (r < maxOf(1, advWeight)) generateAdvancedMathQuestion() else generateGrade2Math(Random.nextInt(7))
+    }
+
+    // 答题后更新权重
+    private fun updateAfterRound(selected: Set<Question>, newRound: Int, prefs: android.content.SharedPreferences) {
+        // 语文题：抽中的 reset 为 0，未抽中的 +1
+        val selectedTexts = selected.map { it.text }.toSet()
+        lastSeenCount.entries.forEach { entry ->
+            entry.value = if (entry.key in selectedTexts) 0 else (entry.value ?: 0) + 1
+        }
+        // 新题（从未出现过且被抽中）
+        for (q in selected) {
+            if (!lastSeenCount.containsKey(q.text) && isStaticQuestion(q)) {
+                lastSeenCount[q.text] = 0
+            }
+        }
+        // 数学题型：用 lastGeneratedType 记录具体子类型
+        if (ThinkingMathGenerator.lastGeneratedType.isNotEmpty()) {
+            mathTypeSeen[ThinkingMathGenerator.lastGeneratedType] = 0
+        }
+        if (OlympiadMathGenerator.lastGeneratedType.isNotEmpty()) {
+            mathTypeSeen[OlympiadMathGenerator.lastGeneratedType] = 0
+        }
+        // 旧数学题类型也 reset
+        mathTypeSeen["grade2"] = 0
+        mathTypeSeen["advanced"] = 0
+
+        // 持久化
+        val lsObj = JSONObject()
+        lastSeenCount.forEach { (k, v) -> if (v < 50) lsObj.put(k, v) }  // 超过50轮的清除，避免无限增长
+        val mtObj = JSONObject()
+        mathTypeSeen.forEach { (k, v) -> mtObj.put(k, v) }
+        val meObj = JSONObject()
+        mathTypeErrors.forEach { (k, v) -> if (v > 0) meObj.put(k, v) }
+        prefs.edit()
+            .putString(KEY_LAST_SEEN_COUNT, lsObj.toString())
+            .putString(KEY_MATH_TYPE_SEEN, mtObj.toString())
+            .putString(KEY_MATH_TYPE_ERRORS, meObj.toString())
+            .putInt(KEY_QUIZ_ROUND, newRound)
+            .apply()
+    }
+
+    private fun isStaticQuestion(q: Question): Boolean {
+        return (builtinVerbalQuestions + ThinkingChineseQuestions.questions).any { it.text == q.text }
     }
 
     private fun generateMathQuestion(): Question = when (Random.nextInt(10)) {
@@ -304,6 +390,35 @@ object QuestionBank {
         val obj = JSONObject()
         errorRecords.forEach { (k, v) -> if (v > 0) obj.put(k, v) }
         prefs.edit().putString(KEY_ERROR_RECORDS, obj.toString()).apply()
+        
+        // 如果是数学题且答错，记录题型错误
+        if (isMath && !isCorrect) {
+            val type = detectMathType(question.text)
+            if (type != null) {
+                val te = mathTypeErrors[type] ?: 0
+                mathTypeErrors[type] = te + 1
+                val meObj = JSONObject()
+                mathTypeErrors.forEach { (k, v) -> if (v > 0) meObj.put(k, v) }
+                prefs.edit().putString(KEY_MATH_TYPE_ERRORS, meObj.toString()).apply()
+            }
+        }
+        // 如果答对，错题记录衰减
+        if (!isMath && isCorrect) {
+            // 语文题答对，lastSeenCount 不增加（已在下一轮自然+1）
+        }
+    }
+
+    // 根据题目文本检测数学题型
+    private fun detectMathType(text: String): String? {
+        return when {
+            "植树" in text || "种树" in text -> "grade2"
+            "锯" in text -> "grade2"
+            "排队" in text || "左数" in text || "右数" in text -> "advanced"
+            "年龄" in text || "岁" in text && ("倍" in text || "差" in text) -> "advanced"
+            "近似数" in text -> "advanced"
+            "百位" in text || "千位" in text -> "grade2"
+            else -> null
+        }
     }
     
     // 省略剩余逻辑，确保上述核心生成方法被调用

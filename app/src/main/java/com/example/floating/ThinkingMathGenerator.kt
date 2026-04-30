@@ -26,6 +26,43 @@ object ThinkingMathGenerator {
             else -> generateAgeDifference()
         }
     }
+    // 加权版本：很久没出现的题型权重更高，答错过的题型优先
+    var lastGeneratedType: String = ""
+    private val typeNames = listOf("treePlanting","sawLog","ageProblem","queueProblem","ropeProblem",
+        "numberPattern","sumMultiple","chickenRabbit","matchstick","reverseProblem","circleProblem","stairsProblem")
+
+    fun generateWeighted(seen: Map<String, Int>, errors: Map<String, Int>): Question {
+        val weights = typeNames.map { tn ->
+            val key = "thinking-$tn"
+            val s = seen[key] ?: 0
+            val e = errors[key] ?: 0
+            s * 2 + e * 5 + 1
+        }
+        val total = weights.sum()
+        var r = Random.nextInt(total)
+        var idx = 0
+        for (w in weights) {
+            r -= w
+            if (r < 0) break
+            idx++
+        }
+        lastGeneratedType = "thinking-${typeNames[idx]}"
+        return when (idx) {
+            0 -> generateTreePlanting()
+            1 -> generateSawLog()
+            2 -> generateAgeProblem()
+            3 -> generateQueueProblem()
+            4 -> generateRopeProblem()
+            5 -> generateNumberPattern()
+            6 -> generateSumMultiple()
+            7 -> generateChickenRabbit()
+            8 -> generateMatchstick()
+            9 -> generateReverseProblem()
+            10 -> generateCircleProblem()
+            11 -> generateStairsProblem()
+            else -> generateAgeDifference()
+        }
+    }
 
     // ============ ① 植树问题 ============
     /**
