@@ -303,7 +303,7 @@ class FloatingService : Service() {
         
         var minutes = 0
         if (passed) {
-            val maxMinutes = 60; val minMinutes = 40
+            val maxMinutes = 40; val minMinutes = 27
             val extraQuestions = totalQuestions - required
             minutes = if (extraQuestions > 0) {
                 minMinutes + (correctCount - required) * (maxMinutes - minMinutes) / extraQuestions
