@@ -270,17 +270,18 @@ object QuestionBank {
 
     private fun selectOldMathByWeight(): Pair<Question, String> {
         val allOldTypes = grade2TypeNames.map { "old-$it" } + advancedTypeNames.map { "old-$it" }
-        val weights = allOldTypes.map { tn ->
+        val maxRound = mathTypeSeenRound.values.maxOrNull() ?: 0
+        val weights: List<Int> = allOldTypes.map { tn ->
             val lastSeen = mathTypeSeenRound[tn] ?: 0
-            val missed = currentRound - lastSeen
+            val missed = if (lastSeen > 0) maxRound - lastSeen else maxRound + 1
             val errs = mathTypeErrors[tn] ?: 0
             missed * 2 + errs * 5 + 1
         }
-        val total = weights.sum()
-        var r = Random.nextInt(total)
+        val total: Int = weights.sum()
+        var r: Int = Random.nextInt(total)
         var idx = 0
         for (w in weights) {
-            r -= w
+            r = r - w
             if (r < 0) break
             idx++
         }
