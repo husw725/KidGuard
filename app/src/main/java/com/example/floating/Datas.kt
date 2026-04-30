@@ -43,7 +43,7 @@ val builtinVerbalQuestions = listOf(
     Question("“长短”中的“长”正确读音是？", listOf("cháng", "zhǎng", "chǎng", "zhàng"), 0),
     Question("“音乐”中的“乐”正确读音是？", listOf("yuè", "lè", "yào", "luò"), 0),
     Question("“快乐”中的“乐”正确读音是？", listOf("lè", "yuè", "yào", "luò"), 0),
-    Question("“水分”中的“分”正确读音是？", listOf("fèn", "fēn", "fěn", "fāng"), 1),
+    Question("“水分”中的“分”正确读音是？", listOf("fèn", "fēn", "fěn", "fāng"), 0),
     Question("“分数”中的“数”正确读音是？", listOf("shù", "shǔ", "shuò", "shuā"), 0),
     Question("“数星星”中的“数”正确读音是？", listOf("shǔ", "shù", "shuò", "shuā"), 0),
     Question("“都在”中的“都”正确读音是？", listOf("dōu", "dū", "dǒu", "dā"), 0),

@@ -130,13 +130,14 @@ object QuestionBank {
 
     fun getRandomQuestions(context: Context, count: Int): List<Question> {
         loadLocalData(context)
-        val allAvailablePool = (cloudQuestions + builtinVerbalQuestions).distinctBy { it.text }
+        // 合并所有语文题库：内置 + 云题目 + 拓展题
+        val allVerbalPool = (cloudQuestions + builtinVerbalQuestions + ThinkingChineseQuestions.questions).distinctBy { it.text }
         val selectedQuestions = mutableSetOf<Question>()
         
         val verbalLimit = count / 2
         
-        // 1. Fill advanced questions
-        while (selectedQuestions.size < (verbalLimit * 0.4).toInt()) {
+        // 1. Fill advanced questions (reading, composition, logic)
+        while (selectedQuestions.size < (verbalLimit * 0.3).toInt()) {
             val q = when(Random.nextInt(5)) {
                 0 -> generateCompositionQuestion()
                 1 -> generateVerbalLogicQuestion()
@@ -145,11 +146,8 @@ object QuestionBank {
             if (selectedQuestions.none { it.text == q.text }) selectedQuestions.add(q)
         }
         
-        // 2. Fill remaining verbal
-        // ... (rest of logic)
-        
-        // 2. Fill remaining verbal questions
-        val weightedPool = allAvailablePool.filter { q -> selectedQuestions.none { it.text == q.text } }
+        // 2. Fill remaining verbal questions (weighted pool with error records)
+        val weightedPool = allVerbalPool.filter { q -> selectedQuestions.none { it.text == q.text } }
             .map { q -> Pair(q, 1 + (errorRecords[q.text] ?: 0) * 3) }
             .toMutableList()
             
@@ -167,15 +165,24 @@ object QuestionBank {
             }
         }
         
-        // 3. Math Questions & Olympiad
+        // 3. Math Questions — mix old generators with new thinking math
         val mathNeeded = count - selectedQuestions.size
-        // 强制插入至少一个奥数题
-        if (selectedQuestions.none { it.text.contains("规律") || it.text.contains("数列") || it.text.contains("已知") }) {
-             selectedQuestions.add(OlympiadMathGenerator.generate())
+        // 强制插入至少 1 道 ThinkingMath 题
+        if (mathNeeded > 0) {
+            selectedQuestions.add(ThinkingMathGenerator.generate())
         }
-        
+        // 也保留旧奥数生成器
+        if (selectedQuestions.size < count) {
+            selectedQuestions.add(OlympiadMathGenerator.generate())
+        }
+
         while(selectedQuestions.size < count) {
-            selectedQuestions.add(generateMathQuestion())
+            // 新旧数学题混合：3/5 用新思维题，2/5 用旧生成器
+            if (Random.nextInt(5) < 3) {
+                selectedQuestions.add(ThinkingMathGenerator.generate())
+            } else {
+                selectedQuestions.add(generateMathQuestion())
+            }
         }
         
         return selectedQuestions.toList().shuffled()
@@ -226,7 +233,7 @@ object QuestionBank {
     private fun generateVerbalLogicQuestion(): Question = when (Random.nextInt(6)) {
         0 -> { val categories = listOf(listOf("苹果", "香蕉", "西瓜", "青菜"), listOf("老虎", "狮子", "灰狼", "菊花"), listOf("铅笔", "书包", "尺子", "雨鞋"), listOf("燕子", "喜鹊", "大雁", "松鼠"), listOf("白云", "星星", "太阳", "操场"), listOf("跳高", "跑步", "打球", "读书")); val cat = categories.random(); createQuestion("找出不是同一类的词：", cat.last(), cat.dropLast(1)) }
         1 -> { val items = listOf(Triple("日", "月", "明"), Triple("女", "马", "妈"), Triple("人", "木", "休"), Triple("口", "十", "叶"), Triple("门", "口", "问"), Triple("木", "木", "林"), Triple("小", "大", "尖"), Triple("口", "天", "吴"), Triple("立", "占", "站"), Triple("讠", "也", "说")); val item = items.random(); val allWrongs = "好男认写字校学们位明".map { it.toString() }.filter { it != item.third }; createQuestion("${item.first} + ${item.second} = ( )", item.third, allWrongs.shuffled().take(3)) }
-        2 -> { val m = listOf("一( )画" to "幅", "一( )马" to "匹", "一( )雷声" to "声", "一( )小路" to "条").random(); createQuestion(m.first, m.second, listOf("个", "只", "片").shuffled().take(3)) }
+        2 -> { val m = listOf("一( )画" to "幅", "一( )马" to "匹", "一( )雷声" to "声", "一( )小路" to "条").random(); createQuestion(m.first, m.second, listOf("个", "只", "片")) }
         3 -> { val r = listOf("“春天像个害羞的小姑娘”是( )句" to "比喻", "“小树在风中点头”是( )句" to "拟人").random(); createQuestion(r.first, r.second, listOf("夸张", "排比", "反问").filter { it != r.second }) }
         4 -> { val c = listOf("端午节吃( )" to "粽子", "元宵节吃( )" to "元宵", "春节是( )的开始" to "一年").random(); createQuestion(c.first, c.second, listOf("月饼", "饺子", "春分")) }
         else -> { val y = listOf("《亡羊补牢》告诉我们要( )" to "及时改正错误", "《揠苗助长》告诉我们不能( )" to "急于求成").random(); createQuestion(y.first, y.second, listOf("努力学习", "尊敬师长", "勤俭节约").filter { it != y.second }) }
@@ -259,18 +266,33 @@ object QuestionBank {
     private fun createMathQ(text: String, answer: Int): Question {
         val correct = answer.toString()
         val wrongs = mutableSetOf<String>()
-        // 尝试生成最多3个干扰项，如果无法生成则接受较少的干扰项
-        for (i in 0 until 10) {
+        // 多轮尝试确保至少3个干扰项
+        for (i in 0 until 30) {
             if (wrongs.size >= 3) break
-            val w = (answer + Random.nextInt(-10, 11)).toString()
-            if (w != correct && w.toInt() >= 0) wrongs.add(w)
+            // 扩大干扰范围，避免答案=0时负数过滤导致干扰项不足
+            val offset = Random.nextInt(-20, 21)
+            val w = answer + offset
+            if (w >= 0 && w.toString() != correct) wrongs.add(w.toString())
+        }
+        // 兜底：如果还是不足3个，用固定偏移补充
+        val fallbackOffsets = listOf(1, 2, 3, 5, 10, 15, 20)
+        for (off in fallbackOffsets) {
+            if (wrongs.size >= 3) break
+            val w = (answer + off).toString()
+            if (w != correct) wrongs.add(w)
         }
         return createQuestion(text, correct, wrongs.toList())
     }
 
     private fun createQuestion(text: String, correct: String, wrongs: List<String>): Question {
-        val uniqueWrongs = wrongs.filter { it != correct }.distinct()
-        val allOptions = (uniqueWrongs + correct).shuffled()
+        val uniqueWrongs = wrongs.filter { it != correct }.distinct().toMutableList()
+        // 兜底：确保至少3个干扰项，凑齐4个选项
+        val filler = listOf("A", "B", "C", "D", "1", "2", "3", "4", "5", "0")
+        for (f in filler) {
+            if (uniqueWrongs.size >= 3) break
+            if (f != correct && !uniqueWrongs.contains(f)) uniqueWrongs.add(f)
+        }
+        val allOptions = (uniqueWrongs.take(3) + correct).shuffled()
         return Question(text, allOptions, allOptions.indexOf(correct))
     }
 

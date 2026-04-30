@@ -27,9 +27,9 @@ object OlympiadMathGenerator {
 
     private fun generatePeriodicity(): Question {
         val patterns = listOf(
-            Triple("红、黄、蓝、绿", 4, "第 15 个"),
-            Triple("加、减、乘、除", 4, "第 22 个"),
-            Triple("小欣、小明、老师", 3, "第 20 个")
+            Pair("红、黄、蓝、绿", 4),
+            Pair("加、减、乘、除", 4),
+            Pair("小欣、小明、老师", 3)
         )
         val p = patterns.random()
         val seq = p.first.split("、")
@@ -38,23 +38,23 @@ object OlympiadMathGenerator {
         val ans = seq[(target - 1) % n]
         
         return createQuestion(
-            "按照“${p.first}...”的规律排列，${p.third.replace("第", "").trim()}个是 ( ) 色/字？",
+            "按照${p.first}...的规律排列，第 ${target} 个是什么？",
             ans,
             seq.filter { it != ans }
         )
     }
 
     private fun generateSequencePattern(): Question {
-        val start = Random.nextInt(1, 5)
-        val diff = Random.nextInt(2, 5)
-        val index = Random.nextInt(5, 10)
+        val start = Random.nextInt(1, 6)
+        val diff = Random.nextInt(1, 6)
+        val index = Random.nextInt(3, 8)
         val ans = start + (index - 1) * diff
         val sequence = (1..4).map { start + (it - 1) * diff }.joinToString(", ")
         
         return createQuestion(
             "数列 $sequence, ... 第 $index 项是多少？",
             "$ans",
-            listOf("${ans - diff}", "${ans + diff}", "${ans - 1}")
+            listOf("${ans - diff}", "${ans + diff}", "${ans + 1}")
         )
     }
 
