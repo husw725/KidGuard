@@ -413,12 +413,14 @@ object QuestionBank {
 
     private fun createQuestion(text: String, correct: String, wrongs: List<String>): Question {
         val uniqueWrongs = wrongs.filter { it != correct }.distinct()
-        val allOptions = (uniqueWrongs.take(3) + correct).shuffled().toMutableList()
-        // 兜底：最少2个选项（1个干扰项 + 正确答案）
-        if (allOptions.size < 2) {
-            allOptions.add("其他")
+        var allOptions = (uniqueWrongs.take(3) + correct).distinct()
+        // 确保至少有3个选项（Question要求2-4个）
+        if (allOptions.size < 3) {
+            if (!allOptions.contains("其他")) allOptions = allOptions + "其他"
+            if (allOptions.size < 3 && !allOptions.contains("以上")) allOptions = allOptions + "以上"
         }
-        return Question(text, allOptions, allOptions.indexOf(correct))
+        val shuffled = allOptions.shuffled()
+        return Question(text, shuffled, shuffled.indexOf(correct))
     }
 
     // ... (其他方法保持不变，已确保逻辑调用的是经过shuffledOptions处理或者createQuestion生成的)
