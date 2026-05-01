@@ -44,7 +44,11 @@ object OlympiadMathGenerator {
 
     private fun createQuestion(text: String, correct: String, wrongs: List<String>): Question {
         val uniqueWrongs = wrongs.filter { it != correct }.distinct().toMutableList()
-        val filler = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "10")
+        // 根据正确答案类型选择兜底：数字题用数字，非数字题用通用人名
+        val filler = if (correct.matches(Regex("\\d+")))
+            listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "10")
+        else
+            listOf("小红", "小华", "小刚", "小丽", "小强", "小芳", "小杰", "小兰")
         while (uniqueWrongs.size < 3) {
             val f = filler.random()
             if (f != correct && !uniqueWrongs.contains(f)) uniqueWrongs.add(f)
