@@ -412,14 +412,17 @@ object QuestionBank {
     }
 
     private fun createQuestion(text: String, correct: String, wrongs: List<String>): Question {
-        val uniqueWrongs = wrongs.filter { it != correct }.distinct().toMutableList()
-        // 兜底：确保至少3个干扰项，凑齐4个选项
-        val filler = listOf("A", "B", "C", "D", "1", "2", "3", "4", "5", "0")
-        for (f in filler) {
-            if (uniqueWrongs.size >= 3) break
-            if (f != correct && !uniqueWrongs.contains(f)) uniqueWrongs.add(f)
+        val uniqueWrongs = wrongs.filter { it != correct }.distinct()
+        // 用实际有效的干扰项（最多3个），不凑无意义的字母
+        val allOptions = (uniqueWrongs.take(3) + correct).shuffled().toMutableList()
+        // 兜底：如果选项不足3个，从常见数中找
+        if (allOptions.size < 3) {
+            val candidates = listOf("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10")
+            for (c in candidates) {
+                if (allOptions.size >= 4) break
+                if (c !in allOptions) allOptions.add(c)
+            }
         }
-        val allOptions = (uniqueWrongs.take(3) + correct).shuffled()
         return Question(text, allOptions, allOptions.indexOf(correct))
     }
 
