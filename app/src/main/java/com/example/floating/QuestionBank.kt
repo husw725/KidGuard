@@ -413,15 +413,10 @@ object QuestionBank {
 
     private fun createQuestion(text: String, correct: String, wrongs: List<String>): Question {
         val uniqueWrongs = wrongs.filter { it != correct }.distinct()
-        // 用实际有效的干扰项（最多3个），不凑无意义的字母
         val allOptions = (uniqueWrongs.take(3) + correct).shuffled().toMutableList()
-        // 兜底：如果选项不足3个，从常见数中找
-        if (allOptions.size < 3) {
-            val candidates = listOf("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10")
-            for (c in candidates) {
-                if (allOptions.size >= 4) break
-                if (c !in allOptions) allOptions.add(c)
-            }
+        // 兜底：最少2个选项（1个干扰项 + 正确答案）
+        if (allOptions.size < 2) {
+            allOptions.add("其他")
         }
         return Question(text, allOptions, allOptions.indexOf(correct))
     }
