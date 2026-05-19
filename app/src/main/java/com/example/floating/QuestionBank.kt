@@ -177,7 +177,89 @@ object QuestionBank {
         return createQuestion("${p.first}\n\n问题：${p.second}", p.third.first(), p.third.drop(1))
     }
 
-        // 旧数学题子类型名称
+        // 动态难度追踪
+    private var currentDifficulty: Int = 2 // 1: 基础, 2: 进阶, 3: 挑战
+    private var consecutiveCorrect: Int = 0
+
+    fun updateDifficulty(isCorrect: Boolean) {
+        if (isCorrect) {
+            consecutiveCorrect++
+            if (consecutiveCorrect >= 2 && currentDifficulty < 3) {
+                currentDifficulty++
+                consecutiveCorrect = 0
+            }
+        } else {
+            consecutiveCorrect = 0
+            if (currentDifficulty > 1) {
+                currentDifficulty--
+            }
+        }
+    }
+
+    // --- 高阶思维训练：逆向思维数学 ---
+    private fun generateReverseMath(): Question {
+        val rangeModifier = currentDifficulty
+        return when (Random.nextInt(3)) {
+            0 -> {
+                val days = Random.nextInt(3, 5 + rangeModifier)
+                val count = Random.nextInt(2, 5)
+                val start = count * Math.pow(2.0, days.toDouble()).toInt()
+                createQuestion("小欣采了若干松果，每天吃掉一半，第 $days 天剩下 $count 个，她最开始采了多少个？", "$start", listOf("${start / 2}", "${start * 2}", "${count * days}"))
+            }
+            1 -> {
+                val remain = Random.nextInt(5, 10 + rangeModifier * 5)
+                val lastSpent = Random.nextInt(2, 5 + rangeModifier * 3)
+                val start = (remain + lastSpent) * 2
+                createQuestion("小欣买文具，先花了一半钱，又用了 $lastSpent 元，最后剩下 $remain 元，她原本有多少钱？", "$start", listOf("${start / 2}", "${remain + lastSpent}", "${start + 10}"))
+            }
+            else -> {
+                val restCount = Random.nextInt(5, 5 + rangeModifier * 5)
+                val startFloor = restCount + 1
+                createQuestion("小欣下楼梯，每下一层都要休息一下，下到第 1 层时恰好休息了 $restCount 次，她从第几层开始下的？", "$startFloor", listOf("${restCount}", "${restCount + 2}", "第 1 层"))
+            }
+        }
+    }
+
+    // --- 高阶思维训练：语境逻辑纠错 ---
+    private fun generateLogicCorrection(): Question {
+        return when (Random.nextInt(3)) {
+            0 -> createQuestion("“因为今天天气很热，所以我坚持去操场跑步。” 这句话哪里逻辑有问题？", "“因为...所以”不能用于转折关系", listOf("没有问题", "跑步不应该在操场", "天气热不能跑步"))
+            1 -> createQuestion("“小草变绿了，因为春天来了。” 请选出逻辑更自然的表述：", "因为春天来了，所以小草变绿了", listOf("春天来了，所以小草变绿了", "小草变绿了，因为春天来了", "因为小草变绿了，所以春天来了"))
+            else -> createQuestion("“家里有：苹果、香蕉、西瓜、水果。” 哪一个词不是同一类？", "水果", listOf("苹果", "香蕉", "西瓜"))
+        }
+    }
+
+    // --- 二年级语文重点考点生成器 ---
+    private fun generateAcademicChineseQuestion(): Question {
+        return when (Random.nextInt(5)) {
+            0 -> { // 形近字
+                val items = listOf("带、戴" to "带领", "园、圆" to "公园", "锋、峰" to "锋利", "墓、慕" to "扫墓")
+                val item = items.random()
+                val parts = item.first.split("、")
+                createQuestion("请选出正确的字填入括号：${item.second}( )", parts[0], listOf(parts[1], "提", "立"))
+            }
+            1 -> { // 多音字
+                val items = listOf("得" to "得到(dé)", "为" to "成为(wéi)", "发" to "发现(fā)", "倒" to "摔倒(dǎo)")
+                val item = items.random()
+                createQuestion("加点字“${item.first}”在“${item.second}”中读音正确吗？", "正确", listOf("错误", "不确定"))
+            }
+            2 -> { // 成语填空
+                val items = listOf("山清( )秀" to "水", "名胜( )迹" to "古", "五光( )色" to "十", "春暖( )开" to "花")
+                val item = items.random()
+                createQuestion("补全成语：${item.first.replace("(", "（ ）")}", item.second, listOf("土", "月", "日"))
+            }
+            3 -> { // 古诗
+                val poems = listOf("欲穷千里目，( )" to "更上一层楼", "天苍苍，野茫茫。( )" to "风吹草低见牛羊", "危楼高百尺，( )" to "手可摘星辰")
+                val p = poems.random()
+                createQuestion("填出古诗下一句：${p.first.replace("(", "（ ）")}", p.second, listOf("白日依山尽", "忙趁东风放纸鸢", "遥知不是雪"))
+            }
+            else -> { // 名言
+                createQuestion("与其锦上添花，不如（ ）。", "雪中送炭", listOf("锦上添花", "雪上加霜", "置之不理"))
+            }
+        }
+    }
+
+    // 旧数学题子类型名称
     private val grade2TypeNames = listOf(
         "grade2_add_sub", "grade2_multiply", "grade2_divide_rem", "grade2_weight",
         "grade2_motion", "grade2_digits", "grade2_mix"
