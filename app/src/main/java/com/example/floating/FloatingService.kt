@@ -70,6 +70,13 @@ class FloatingService : Service() {
     private var questionClickCount = 0
     private var lastQuestionClickTime = 0L
 
+    // 答对时的随机鼓励语，让小欣每次都有新惊喜
+    private val praiseMessages = listOf(
+        "真棒！回答正确 ✨", "太厉害啦！全对 🎉", "小欣真聪明 👏", "答对啦，继续加油 💪",
+        "完全正确，了不起 🌟", "哇，你真棒 🦄", "答得漂亮 🍭", "聪明的小脑袋瓜 🧠✨",
+        "正确！你是小学霸 📚", "棒极了，再接再厉 🚀"
+    )
+
     companion object {
         const val PREFS_STATE = "QuizState"
         const val KEY_IN_PROGRESS = "inProgress"
@@ -280,9 +287,10 @@ class FloatingService : Service() {
         val isMath = QuestionBank.isMathQuestion(q.text)
         if (isCorrect) correctCount++ else wrongQuestionsList.add("${q.text} (正确答案: ${q.options[q.correctIndex]})")
         QuestionBank.recordResult(this, q, isCorrect, isMath)
+        QuestionBank.updateDifficulty(this, isCorrect)   // 答题表现驱动难度自适应
         tvFeedback.visibility = View.VISIBLE
         if (isCorrect) {
-            tvFeedback.text = "真棒！回答正确 ✨"; tvFeedback.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
+            tvFeedback.text = praiseMessages.random(); tvFeedback.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
             handler.postDelayed({ currentIndex++; saveState(); showCurrentQuestion() }, 600)
         } else {
             val label = ('A' + q.correctIndex).toString()

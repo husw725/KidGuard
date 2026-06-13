@@ -326,13 +326,15 @@ object ThinkingMathGenerator {
                     wrongs.map { "$it" }
                 )
             }
-            // 三角形数（1,3,6,10,15,...）
+            // 三角形数（1,3,6,10,15,...）相邻差 +2,+3,+4,+5,+6...
             2 -> {
                 val seq = mutableListOf(1)
-                for (i in 1 until 5) seq.add(seq.last() + i + 1)
-                val answer = seq.last() + 5
-                val wrongs = listOf(answer + 1, answer - 1, seq.last() + 4, answer + 2)
-                    .filter { it != answer }.distinct().take(3)
+                for (i in 1 until 5) seq.add(seq.last() + i + 1)   // 差为 2,3,4,5 -> seq=[1,3,6,10,15]
+                val nextDiff = 6                                    // 下一个差是 +6
+                val answer = seq.last() + nextDiff                  // 15 + 6 = 21
+                // 干扰项：seq.last()+5(误以为差不变的常见错误) 等
+                val wrongs = listOf(seq.last() + 5, answer + 1, answer - 2, seq.last() + 7)
+                    .filter { it != answer && it > 0 }.distinct().take(3)
                 createQuestion(
                     "找规律填数：${seq.joinToString(", ")}, (?)",
                     "$answer",
