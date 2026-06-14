@@ -428,14 +428,20 @@ object QuestionBank {
         guard = 0
         while (selectedQuestions.size < count && challengeAdded < challengeQuota && guard < 80) {
             guard++
-            val useThinking = challengeAdded % 2 == 0
-            val q = if (useThinking)
-                ThinkingMathGenerator.generateWeighted(mathTypeSeenRound, mathTypeErrors)
-            else
-                OlympiadMathGenerator.generateWeighted(mathTypeSeenRound, mathTypeErrors)
+            // 思维题 / 奥数题 / 巧算题 三选一轮换
+            val src = challengeAdded % 3
+            val q = when (src) {
+                0 -> ThinkingMathGenerator.generateWeighted(mathTypeSeenRound, mathTypeErrors)
+                1 -> OlympiadMathGenerator.generateWeighted(mathTypeSeenRound, mathTypeErrors)
+                else -> SmartCalcGenerator.generateWeighted(mathTypeSeenRound, mathTypeErrors)
+            }
             if (selectedQuestions.none { it.text == q.text }) {
                 selectedQuestions.add(q)
-                val tn = if (useThinking) ThinkingMathGenerator.lastGeneratedType else OlympiadMathGenerator.lastGeneratedType
+                val tn = when (src) {
+                    0 -> ThinkingMathGenerator.lastGeneratedType
+                    1 -> OlympiadMathGenerator.lastGeneratedType
+                    else -> SmartCalcGenerator.lastGeneratedType
+                }
                 if (tn.isNotEmpty()) mathTypeSeenRound[tn] = currentRound + 1
                 challengeAdded++
             }
