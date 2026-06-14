@@ -8,7 +8,8 @@ import kotlin.random.Random
 data class Question(
     val text: String,
     val options: List<String>,
-    val correctIndex: Int
+    val correctIndex: Int,
+    val audioWord: String? = null   // 非空 = “听音选图”题：朗读该英文单词，选项为 emoji 图片
 ) {
     init {
         require(options.size in 2..4) { "Options must contain 2 to 4 items" }
@@ -23,6 +24,7 @@ data class Question(
         options.forEach { opts.put(it) }
         obj.put("options", opts)
         obj.put("correctIndex", correctIndex)
+        if (audioWord != null) obj.put("audioWord", audioWord)
         return obj
     }
 
@@ -41,7 +43,7 @@ data class Question(
         }
         
         val newOptions = (otherOptions.take(3) + correctOption).shuffled()
-        return Question(text, newOptions, newOptions.indexOf(correctOption))
+        return Question(text, newOptions, newOptions.indexOf(correctOption), audioWord)
     }
 
     companion object {
@@ -51,9 +53,10 @@ data class Question(
             val opts = mutableListOf<String>()
             for (i in 0 until optsArray.length()) opts.add(optsArray.getString(i))
             val correctIndex = obj.getInt("correctIndex")
+            val audioWord = if (obj.has("audioWord")) obj.getString("audioWord") else null
             // 保持原始数据完整性，如果原始数据有问题，强制修正
             return try {
-                Question(text, opts, correctIndex)
+                Question(text, opts, correctIndex, audioWord)
             } catch (e: Exception) {
                 // 简单处理数据源错误，如果导入数据不规范则返回默认结构
                 val safeOpts = (opts.distinct().take(3) + "补全").shuffled()
@@ -79,6 +82,8 @@ object QuestionBank {
     private const val KEY_MATH_TYPE_SEEN = "MathTypeSeen"
     private const val KEY_MATH_TYPE_ERRORS = "MathTypeErrors"
     private const val KEY_QUIZ_ROUND = "QuizRound"
+    private const val KEY_DIFFICULTY = "Difficulty"
+    private const val KEY_CONSEC_CORRECT = "ConsecCorrect"
 
     private val cloudQuestions = mutableListOf<Question>()
     private val errorRecords = mutableMapOf<String, Int>()
@@ -128,60 +133,108 @@ object QuestionBank {
         } catch (e: Exception) {}
     }
 
+    // 阅读理解（全部参数化：姓名/数量/颜色/顺序/地点/天气每次随机，答案随之变化，无法死记，只能真读）
     private fun generateReadingQuestion(): Question {
-        // 核心素材库
-        val oldPool = listOf(
-            Triple("春天来了，小草绿了，花儿开了，小鸟在枝头叫。小欣去公园玩，看到春天真美丽。", "春天的小草是什么颜色的？", listOf("绿色", "黄色", "红色", "蓝色")),
-            Triple("雷雨过后，天空中挂着一道美丽的彩虹。小明指着彩虹大叫：看！彩虹有七种颜色呢。", "彩虹有几种颜色？", listOf("七种", "三种", "五种", "六种")),
-            Triple("小猫钓鱼，它一会儿抓蝴蝶，一会儿捉蜻蜓，结果一条鱼也没钓到。小猫难过地哭了。", "小猫为什么一条鱼也没钓到？", listOf("因为它三心二意", "因为鱼太小", "因为猫不会钓鱼", "因为网破了")),
-            Triple("大象的鼻子长长的，像一根水管。大象用鼻子喝水，还能用它搬运大木头。", "大象的鼻子像什么？", listOf("水管", "木头", "尾巴", "绳子")),
-            Triple("小白兔喜欢吃萝卜，它跑得非常快，耳朵长长的，眼睛红红的，真可爱。", "小白兔的耳朵是什么样的？", listOf("长长的", "短短的", "圆圆的", "大大的")),
-            Triple("秋天到了，树叶变黄了，一片片落下来，像金色的蝴蝶在空中飞舞。", "树叶落下来像什么？", listOf("金色的蝴蝶", "小鸟", "小草", "雪花")),
-            Triple("小明在写字，他坐得端端正正，眼离书本一尺，手离笔尖一寸。", "写字时，手离笔尖几寸？", listOf("一寸", "两寸", "三寸", "四寸")),
-            Triple("夏天的夜晚，星星亮晶晶的，像无数颗小珍珠，洒满了蓝色的天空。", "天上的星星像什么？", listOf("小珍珠", "小雨点", "小石子", "小灯泡")),
-            Triple("小猴子想种一棵桃树，它把种子种下后，每天都要拔出来看看长根了没有。结果种子干死了。", "小猴子种的桃树为什么死了？", listOf("它拔出来看，没让种子安静生长", "因为它没浇水", "因为种子坏了", "因为虫子吃了")),
-            Triple("农夫养了一群羊，第一次丢了一只，他没补围栏。第二次又丢了一只，他赶紧把围栏补好了。", "这则故事告诉我们什么道理？", listOf("犯了错误及时改正还不晚", "羊要关在家里", "农夫很聪明", "养羊很困难")),
-            Triple("青蛙坐在井底，小鸟飞来说：世界大得很呢！青蛙不信，觉得世界只有井口那么大。", "青蛙为什么觉得世界很小？", listOf("它被困在井底，眼界受限", "因为它眼睛不好", "因为井里没有光", "因为它不爱学习")),
-            Triple("小明一边看电视一边写作业，结果写得很慢，字也写得很丑。", "小明写字慢且丑的原因是？", listOf("他一心二用", "他不想写作业", "他笔不好用", "他太累了")),
-            Triple("雪孩子为了救小白兔，自己化成了水，后来又变成了白云。", "雪孩子为什么会化成水？", listOf("为了救小白兔", "因为天气冷", "因为它想玩水", "因为太阳太大")),
-            Triple("刺猬背着果子，遇到小狗，它赶紧缩成一团，保护自己。", "刺猬遇到危险时会怎么做？", listOf("缩成一团", "大叫", "跑掉", "攻击对方")),
-            Triple("书是知识的海洋，我们要多读书，读好书，养成爱阅读的好习惯。", "我们要养成什么好习惯？", listOf("爱阅读", "爱看电视", "爱画画", "爱睡觉")),
-            Triple("我们要爱护花草树木，不能随意折断树枝，也不能乱踩草坪。", "下列做法正确的是？", listOf("爱护花草", "折断树枝", "践踏草坪", "乱摘花朵")),
-            Triple("松鼠的尾巴很大，像一把大伞。下雨时，它把尾巴挡在头顶，就不会淋雨了。", "松鼠的尾巴有什么用？", listOf("遮雨", "打水", "当床", "扫雪")),
-            Triple("小军和小明比赛跑步，小军跑得快，但他不小心摔倒了，最后小明赢了比赛。", "谁赢了比赛？", listOf("小明", "小军", "他们平手", "都输了"))
-        )
-
-        val extendedPool = listOf(
-            Triple("春天来了，小草绿了，花儿开了，小鸟在枝头叫。小欣去公园玩，看到春天真美丽。", "文章提到春天里除了小草，还有什么？", listOf("花儿和小鸟", "小鱼和小虾", "大树和房子", "蝴蝶和蜜蜂")),
-            Triple("雷雨过后，天空中挂着一道美丽的彩虹。小明指着彩虹大叫：看！彩虹有七种颜色呢。", "什么时候会出现彩虹？", listOf("雷雨过后", "早晨起来", "太阳下山", "下雪时候")),
-            Triple("小猫钓鱼，它一会儿抓蝴蝶，一会儿捉蜻蜓，结果一条鱼也没钓到。小猫难过地哭了。", "文中说小猫“难过地哭了”，这是为什么？", listOf("因为一条鱼也没钓到", "因为抓不到蝴蝶", "因为没有捉到蜻蜓", "因为没吃到饭")),
-            Triple("大象的鼻子长长的，像一根水管。大象用鼻子喝水，还能用它搬运大木头。", "大象的鼻子有什么用？", listOf("喝水和搬运木头", "唱歌和跳舞", "飞行和奔跑", "织布和缝衣")),
-            Triple("小白兔喜欢吃萝卜，它跑得非常快，耳朵长长的，眼睛红红的，真可爱。", "小白兔喜欢吃什么？", listOf("萝卜", "青草", "骨头", "鱼肉")),
-            Triple("秋天到了，树叶变黄了，一片片落下来，像金色的蝴蝶在空中飞舞。", "秋天树叶颜色变了吗？", listOf("变黄了", "变绿了", "变红了", "变白了")),
-            Triple("小明在写字，他坐得端端正正，眼离书本一尺，手离笔尖一寸。", "写字时，眼离书本多远？", listOf("一尺", "两尺", "三尺", "四尺")),
-            Triple("夏天的夜晚，星星亮晶晶的，像无数颗小珍珠，洒满了蓝色的天空。", "这是什么时候的景色？", listOf("夏天的夜晚", "春天的早晨", "秋天的下午", "冬天的午后")),
-            Triple("小猴子想种一棵桃树，它把种子种下后，每天都要拔出来看看长根了没有。结果种子干死了。", "这则故事给了我们什么启示？", listOf("做事要有耐心，不能急于求成", "猴子很聪明", "桃子很好吃", "种树要天天看")),
-            Triple("农夫养了一群羊，第一次丢了一只，他没补围栏。第二次又丢了一只，他赶紧把围栏补好了。", "农夫什么时候补好了围栏？", listOf("第二次丢羊后", "第一次丢羊后", "羊全部丢完后", "还没丢羊前")),
-            Triple("青蛙坐在井底，小鸟飞来说：世界大得很呢！青蛙不信，觉得世界只有井口那么大。", "小鸟是怎么评价世界的？", listOf("世界大得很", "世界很小", "世界很美丽", "世界很危险")),
-            Triple("小明一边看电视一边写作业，结果写得很慢，字也写得很丑。", "我们在写作业时应该怎么做？", listOf("专心致志", "一边吃零食一边写", "边看电视边写", "边玩玩具边写")),
-            Triple("雪孩子为了救小白兔，自己化成了水，后来又变成了白云。", "雪孩子化成水后变成了什么？", listOf("白云", "小溪", "冰块", "小兔")),
-            Triple("刺猬背着果子，遇到小狗，它赶紧缩成一团，保护自己。", "刺猬背着什么？", listOf("果子", "书包", "木头", "石头")),
-            Triple("书是知识的海洋，我们要多读书，读好书，养成爱阅读的好习惯。", "文中把书比作什么？", listOf("知识的海洋", "美丽的花园", "广阔的天空", "温暖的家")),
-            Triple("我们要爱护花草树木，不能随意折断树枝，也不能乱踩草坪。", "我们应该怎么对待树木？", listOf("不能随意折断树枝", "随意折断", "乱踩草坪", "拔掉树苗")),
-            Triple("松鼠的尾巴很大，像一把大伞。下雨时，它把尾巴挡在头顶，就不会淋雨了。", "松鼠的尾巴像什么？", listOf("一把大伞", "一块石头", "一朵白云", "一条小河")),
-            Triple("小军和小明比赛跑步，小军跑得快，但他不小心摔倒了，最后小明赢了比赛。", "小军为什么输了比赛？", listOf("他不小心摔倒了", "他跑得慢", "他不想赢", "他迷路了"))
-        )
-        
-        val pool = oldPool + extendedPool
-        val p = pool.random()
-        return createQuestion("${p.first}\n\n问题：${p.second}", p.third.first(), p.third.drop(1))
+        val names = listOf("小欣", "小明", "小红", "小华", "小丽", "小杰")
+        return when (Random.nextInt(6)) {
+            // ① 采果子——读数量
+            0 -> {
+                val name = names.random()
+                val place = listOf("果园", "山上", "外婆家", "农场").random()
+                val fruit = listOf("苹果", "桃子", "橘子", "梨", "草莓").random()
+                val a = Random.nextInt(6, 16)
+                val b = Random.nextInt(2, a - 1)
+                val passage = "星期天，${name}去${place}玩。${name}一共采了 $a 个${fruit}，送给好朋友 $b 个。"
+                if (Random.nextBoolean())
+                    createQuestion("$passage\n\n问题：${name}一共采了几个${fruit}？", "$a", listOf("${a - 1}", "${a + 1}", "$b"))
+                else
+                    createQuestion("$passage\n\n问题：${name}送给好朋友几个${fruit}？", "$b", listOf("$a", "${b + 1}", "${b - 1}"))
+            }
+            // ② 新书包——读颜色 / 图案
+            1 -> {
+                val name = names.random()
+                val colors = listOf("红", "黄", "蓝", "绿", "紫", "粉")
+                val color = colors.random()
+                val animals = listOf("小猫", "小狗", "小兔", "小熊", "小鸟")
+                val animal = animals.random()
+                val passage = "${name}有一个新书包，是${color}色的，书包上画着一只${animal}。"
+                if (Random.nextBoolean())
+                    createQuestion("$passage\n\n问题：${name}的书包是什么颜色的？", "${color}色", colors.filter { it != color }.shuffled().take(3).map { "${it}色" })
+                else
+                    createQuestion("$passage\n\n问题：书包上画着什么？", animal, animals.filter { it != animal }.shuffled().take(3))
+            }
+            // ③ 比多少——三人比较
+            2 -> {
+                val three = names.shuffled().take(3)
+                val counts = (5..20).shuffled().take(3)
+                val item = listOf("颗糖", "本书", "支铅笔", "张贴纸").random()
+                val passage = "${three[0]}有 ${counts[0]} ${item}，${three[1]}有 ${counts[1]} ${item}，${three[2]}有 ${counts[2]} ${item}。"
+                if (Random.nextBoolean()) {
+                    val i = counts.indices.maxByOrNull { counts[it] }!!
+                    createQuestion("$passage\n\n问题：谁的${item}最多？", three[i], three.filterIndexed { j, _ -> j != i })
+                } else {
+                    val i = counts.indices.minByOrNull { counts[it] }!!
+                    createQuestion("$passage\n\n问题：谁的${item}最少？", three[i], three.filterIndexed { j, _ -> j != i })
+                }
+            }
+            // ④ 事情顺序
+            3 -> {
+                val name = names.random()
+                val acts = listOf("刷牙", "吃早饭", "背书包上学", "读故事书", "洗脸").shuffled().take(3)
+                val passage = "早上，${name}先${acts[0]}，再${acts[1]}，最后${acts[2]}。"
+                when (Random.nextInt(3)) {
+                    0 -> createQuestion("$passage\n\n问题：${name}最先做什么？", acts[0], acts.drop(1))
+                    1 -> createQuestion("$passage\n\n问题：${name}最后做什么？", acts[2], acts.dropLast(1))
+                    else -> createQuestion("$passage\n\n问题：${name}第二件做的事是什么？", acts[1], listOf(acts[0], acts[2]))
+                }
+            }
+            // ⑤ 小动物住处
+            4 -> {
+                val pairs = listOf(
+                    Triple("小鱼", "河里", "游来游去"),
+                    Triple("小鸟", "树上", "唱歌"),
+                    Triple("小兔", "草地上", "吃萝卜"),
+                    Triple("小蚂蚁", "地下", "搬粮食"),
+                    Triple("小蜜蜂", "花丛里", "采蜜")
+                )
+                val p = pairs.random()
+                val passage = "${p.first}住在${p.second}，每天在那里${p.third}。"
+                if (Random.nextBoolean())
+                    createQuestion("$passage\n\n问题：${p.first}住在哪里？", p.second, pairs.map { it.second }.filter { it != p.second }.shuffled().take(3))
+                else
+                    createQuestion("$passage\n\n问题：${p.first}每天在做什么？", p.third, pairs.map { it.third }.filter { it != p.third }.shuffled().take(3))
+            }
+            // ⑥ 天气与穿戴
+            else -> {
+                val name = names.random()
+                val pairs = listOf(
+                    Triple("下雨", "雨伞", "上学去"),
+                    Triple("下雪", "手套", "堆雪人"),
+                    Triple("天晴", "帽子", "去公园")
+                )
+                val p = pairs.random()
+                val passage = "今天${p.first}了，${name}带上${p.second}，高高兴兴地${p.third}。"
+                if (Random.nextBoolean())
+                    createQuestion("$passage\n\n问题：今天天气怎么样？", p.first, pairs.map { it.first }.filter { it != p.first })
+                else
+                    createQuestion("$passage\n\n问题：${name}带了什么出门？", p.second, pairs.map { it.second }.filter { it != p.second })
+            }
+        }
     }
 
-        // 动态难度追踪
+        // 动态难度追踪（持久化，跨答题局保留）
     private var currentDifficulty: Int = 2 // 1: 基础, 2: 进阶, 3: 挑战
     private var consecutiveCorrect: Int = 0
 
-    fun updateDifficulty(isCorrect: Boolean) {
+    private fun loadDifficulty(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        currentDifficulty = prefs.getInt(KEY_DIFFICULTY, 2).coerceIn(1, 3)
+        consecutiveCorrect = prefs.getInt(KEY_CONSEC_CORRECT, 0)
+    }
+
+    // 答对连续 2 题升档，答错立即降档；结果持久化，让题目难度随孩子水平走
+    fun updateDifficulty(context: Context, isCorrect: Boolean) {
+        loadDifficulty(context)
         if (isCorrect) {
             consecutiveCorrect++
             if (consecutiveCorrect >= 2 && currentDifficulty < 3) {
@@ -194,6 +247,10 @@ object QuestionBank {
                 currentDifficulty--
             }
         }
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putInt(KEY_DIFFICULTY, currentDifficulty)
+            .putInt(KEY_CONSEC_CORRECT, consecutiveCorrect)
+            .apply()
     }
 
     // --- 高阶思维训练：逆向思维数学 ---
@@ -227,6 +284,26 @@ object QuestionBank {
             1 -> createQuestion("“小草变绿了，因为春天来了。” 请选出逻辑更自然的表述：", "因为春天来了，所以小草变绿了", listOf("春天来了，所以小草变绿了", "小草变绿了，因为春天来了", "因为小草变绿了，所以春天来了"))
             else -> createQuestion("“家里有：苹果、香蕉、西瓜、水果。” 哪一个词不是同一类？", "水果", listOf("苹果", "香蕉", "西瓜"))
         }
+    }
+
+    // --- 趣味谜语 / 脑筋急转弯（激发兴趣，二年级适龄）---
+    private fun generateFunRiddle(): Question {
+        val items = listOf(
+            Triple("🍉 身穿绿衣裳，肚里水汪汪，子儿多又多，个个黑脸膛。（打一水果）", "西瓜", listOf("苹果", "葡萄", "香蕉")),
+            Triple("🥜 麻屋子，红帐子，里面住着白胖子。（打一食物）", "花生", listOf("核桃", "栗子", "玉米")),
+            Triple("☀️ 一个老公公，面孔红彤彤，晚上不见面，白天来上工。（打一自然现象）", "太阳", listOf("月亮", "星星", "彩虹")),
+            Triple("🌧️ 千条线，万条线，落到水里看不见。（打一自然现象）", "雨", listOf("雪", "风", "云")),
+            Triple("🤔 什么东西越洗越脏？", "水", listOf("衣服", "手帕", "碗")),
+            Triple("🚗 什么车没有轮子也能转？", "风车", listOf("汽车", "马车", "自行车")),
+            Triple("📅 一年中哪几个月有28天？", "每个月都有", listOf("只有2月", "只有1月", "一个也没有")),
+            Triple("👦 爸爸有三个儿子，大儿子叫大毛，二儿子叫二毛，三儿子叫什么？", "小欣", listOf("三毛", "小毛", "毛毛")),
+            Triple("🐴 白色的马叫白马，会拉车的马叫什么？", "马车的马", listOf("斑马", "木马", "河马")),
+            Triple("🌡️ 什么东西天气越热，它爬得越高？", "温度计", listOf("小猫", "气球", "树叶")),
+            Triple("🐔 先有鸡还是先有蛋，鸡是从哪里出来的？", "蛋", listOf("鸡妈妈", "天上", "土里")),
+            Triple("🌙 什么时候太阳会从西边出来？", "永远不会", listOf("夏天", "冬天", "下雨天"))
+        )
+        val it = items.random()
+        return createQuestion(it.first, it.second, it.third)
     }
 
     // --- 二年级语文重点考点生成器 ---
@@ -279,24 +356,32 @@ object QuestionBank {
 
     fun getRandomQuestions(context: Context, count: Int): List<Question> {
         loadLocalData(context)
+        loadDifficulty(context)
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val currentRound = prefs.getInt(KEY_QUIZ_ROUND, 0)
         val allVerbalPool = (cloudQuestions + builtinVerbalQuestions + ThinkingChineseQuestions.questions).distinctBy { it.text }
         val selectedQuestions = mutableSetOf<Question>()
-        val verbalLimit = count / 2
 
-        // 1. Fill dynamic advanced questions (reading, composition, logic)
-        while (selectedQuestions.size < (verbalLimit * 0.3).toInt()) {
-            val q = when(Random.nextInt(5)) {
+        // 题量分配：英语少量起步(1~2题)，其余语文 / 数学对半
+        val englishCount = if (count >= 8) 2 else 1
+        val verbalLimit = (count - englishCount) / 2
+
+        // 1. 动态语文题（仿写/标点/阅读/逻辑/课内考点），约占语文的 40%
+        val dynamicVerbalTarget = maxOf(1, (verbalLimit * 0.4).toInt())
+        var guard = 0
+        while (selectedQuestions.size < dynamicVerbalTarget && guard < 80) {
+            guard++
+            val q = when(Random.nextInt(8)) {
                 0 -> generateCompositionQuestion()
                 1 -> generateVerbalLogicQuestion()
+                2 -> generateAcademicChineseQuestion()   // 形近字/多音字/成语/古诗/名言（人教版二年级重点）
+                3 -> generateFunRiddle()                 // 谜语/脑筋急转弯（趣味）
                 else -> generateReadingQuestion()
             }
             if (selectedQuestions.none { it.text == q.text }) selectedQuestions.add(q)
         }
 
-        // 2. Fill remaining verbal — weighted by missed rounds + errors
-        // missed = currentRound - lastSeenRound (从未出现的题 missed = currentRound，权重最大)
+        // 2. 其余语文 — 按“多久没出现 + 错过几次”加权
         val weightedPool = allVerbalPool.filter { q -> selectedQuestions.none { it.text == q.text } }
             .map { q ->
                 val lastSeen = lastSeenRound[q.text] ?: 0
@@ -320,22 +405,51 @@ object QuestionBank {
             }
         }
 
-        // 3. Math — weighted by sub-type missed rounds (27 sub-types total)
-        val mathTypeMissed = { typeName: String ->
-            currentRound - (mathTypeSeenRound[typeName] ?: 0)
+        // 3. 英语启蒙（少量起步），按题型加权避免重复
+        var englishAdded = 0
+        guard = 0
+        while (englishAdded < englishCount && selectedQuestions.size < count && guard < 50) {
+            guard++
+            val q = EnglishGenerator.generateWeighted(mathTypeSeenRound, mathTypeErrors)
+            if (selectedQuestions.none { it.text == q.text }) {
+                selectedQuestions.add(q)
+                if (EnglishGenerator.lastGeneratedType.isNotEmpty())
+                    mathTypeSeenRound[EnglishGenerator.lastGeneratedType] = currentRound + 1
+                englishAdded++
+            }
         }
+
+        // 4. 数学 — 难度决定“奥数/思维题 : 课内题”的比例
+        //    基础档(1)以课内为主，挑战档(3)奥数思维题更多，随孩子水平走
         val mathNeeded = count - selectedQuestions.size
-        if (mathNeeded > 0) {
-            selectedQuestions.add(ThinkingMathGenerator.generateWeighted(mathTypeSeenRound, mathTypeErrors))
+        val challengeRatio = when (currentDifficulty) { 1 -> 0.2; 3 -> 0.7; else -> 0.45 }
+        val challengeQuota = Math.round(mathNeeded * challengeRatio).toInt()
+        var challengeAdded = 0
+        guard = 0
+        while (selectedQuestions.size < count && challengeAdded < challengeQuota && guard < 80) {
+            guard++
+            val useThinking = challengeAdded % 2 == 0
+            val q = if (useThinking)
+                ThinkingMathGenerator.generateWeighted(mathTypeSeenRound, mathTypeErrors)
+            else
+                OlympiadMathGenerator.generateWeighted(mathTypeSeenRound, mathTypeErrors)
+            if (selectedQuestions.none { it.text == q.text }) {
+                selectedQuestions.add(q)
+                val tn = if (useThinking) ThinkingMathGenerator.lastGeneratedType else OlympiadMathGenerator.lastGeneratedType
+                if (tn.isNotEmpty()) mathTypeSeenRound[tn] = currentRound + 1
+                challengeAdded++
+            }
         }
-        if (selectedQuestions.size < count) {
-            selectedQuestions.add(OlympiadMathGenerator.generateWeighted(mathTypeSeenRound, mathTypeErrors))
-        }
-        // 旧数学题：按22种子类型加权选择
-        while (selectedQuestions.size < count) {
-            val (q, typeName) = selectOldMathByWeight()
-            selectedQuestions.add(q)
-            mathTypeSeenRound[typeName] = currentRound + 1
+
+        // 课内数学题填满剩余（基础档优先纯口算课内题）
+        guard = 0
+        while (selectedQuestions.size < count && guard < 100) {
+            guard++
+            val (q, typeName) = if (currentDifficulty == 1) generateGrade2Math() else selectOldMathByWeight()
+            if (selectedQuestions.none { it.text == q.text }) {
+                selectedQuestions.add(q)
+                mathTypeSeenRound[typeName] = currentRound + 1
+            }
         }
 
         // 更新：把本局抽中的语文题 lastSeenRound = currentRound + 1
@@ -435,19 +549,19 @@ object QuestionBank {
         13 -> { val a = Random.nextInt(3, 7); val b = Random.nextInt(3, 7); val left = a * b; val right = (a + 1) * (b - 1); val op = if (left > right) ">" else if (left < right) "<" else "="; createQuestion("$a × $b [ ] ${a + 1} × ${b - 1}", op, listOf(">", "<", "=").filter { it != op }) }
         14 -> { val m = Random.nextInt(3, 8); val n = Random.nextInt(2, 4); createMathQ("小明有 $m 个苹果，小红的苹果数是小明的 $n 倍，两人共有多少个苹果？", m * (n + 1)) }
         15 -> { val yellow = Random.nextInt(3, 8); val n = Random.nextInt(3, 6); createMathQ("筐里有红球和黄球，黄球有 $yellow 个，红球数量是黄球的 $n 倍，红球有多少个？", yellow * n) }
-        16 -> { val son = Random.nextInt(4, 9); val n = Random.nextInt(3, 6); val dad = son * n; createMathQ("今年爸爸 $dad 岁，小欣 $son 岁，爸爸的年龄是小欣的多少倍？", n) }
+        16 -> { val n = Random.nextInt(3, 5); val son = if (n == 3) Random.nextInt(10, 13) else Random.nextInt(7, 11); val dad = son * n; createMathQ("今年爸爸 $dad 岁，小欣 $son 岁，爸爸的年龄是小欣的多少倍？", n) }
         // 新增 10 种题型 (idx 17-26)
         17 -> { val h = Random.nextInt(1, 12); val m_choices = listOf(0, 15, 30, 45); val m = m_choices.random(); val m_str = if (m == 0) "12" else if (m == 15) "3" else if (m == 30) "6" else "9"; createQuestion("钟面上时针指向 $h，分针指向 $m_str，现在是 ( )", "$h:${if (m == 0) "00" else "$m"}", listOf("$h:${if (m == 0) "30" else "00"}", "${if (h < 12) h + 1 else 1}:00", "$h:55")) }
         18 -> { val start_h = Random.nextInt(7, 10); val mins = listOf(15, 30, 45, 60).random(); val end_h = start_h + mins / 60; val end_m = mins % 60; val end_m_str = if (end_m == 0) "00" else "$end_m"; createQuestion("小欣 $start_h:00 开始写作业，写了 $mins 分钟，( ) 写完。", "$end_h:$end_m_str", listOf("${if (end_h > 1) end_h - 1 else end_h}:00", "${end_h + 1}:00", "$end_h:${(end_m + 10) % 60}")) }
         19 -> { val face: String = listOf("北", "南", "东", "西").random(); val back = mapOf("北" to "南", "南" to "北", "东" to "西", "西" to "东")[face]!!; val allDirs: List<String> = listOf("东", "西", "南", "北"); createQuestion("小明面向$face，他的后面是什么方向？", back, allDirs.filter { it != back }) }
         20 -> { val yuan = Random.nextInt(1, 10); val jiao = listOf(5, 10, 50).random(); val total_jiao = yuan * 10 + jiao; createQuestion("$yuan 元 $jiao 角 = ( ) 角", "$total_jiao", listOf("${yuan * 10}", "${total_jiao + 5}", "${total_jiao - 10}")) }
         21 -> { val n = Random.nextInt(2, 4); val total = n * (n - 1); val digitList = (1..n).joinToString("、"); createQuestion("用 $digitList 这${n}个数字可以组成 ( ) 个没有重复数字的两位数。", "$total", listOf("${total - 1}", "${total + 1}", "${total + 2}")) }
-        22 -> { val a = Random.nextInt(2, 9); val b = Random.nextInt(1, 9); if (a + b < 10) { createQuestion("${a} + $b = ( )", "${a + b}", listOf("${a + b + 1}", "${a + b - 1}", "${a + b + 2}")) } else { createQuestion("${a}0 + $b = ( )", "${a * 10 + b}", listOf("${a * 10 + b - 1}", "${a * 10 + b + 1}", "${a * 10 + b + 2}")) } }
+        22 -> { val total = Random.nextInt(20, 80); val b = Random.nextInt(5, total - 4); val a = total - b; createMathQ("（ ）+ $b = $total，括号里应该填几？", a) }
         23 -> { val a = Random.nextInt(8, 15); val b_val = a + Random.nextInt(1, 5); val c_val = b_val + Random.nextInt(1, 5); createQuestion("小明跳了 $a 下，小红比小明多跳 3 下，小兰比小红多跳 2 下，小兰跳了 ( ) 下。", "${a + 5}", listOf("${a + 3}", "${a + 2}", "${a + 4}")) }
-        24 -> { val shapes = listOf(Pair("正方体", "6"), Pair("三棱柱", "5"), Pair("圆锥", "2"), Pair("球", "0")); val s = shapes.random(); createQuestion("${s.first}有几个面？", s.second, listOf("0", "1", "2", "3", "4", "5", "6", "8").filter { it != s.second }.take(3)) }
+        24 -> { val shapes = listOf(Triple("正方体", "6", listOf("4", "5", "8")), Triple("长方体", "6", listOf("4", "5", "8")), Triple("圆柱", "3", listOf("2", "4", "6"))); val s = shapes.random(); createQuestion("${s.first}有几个面？", s.second, s.third) }
         25 -> { val x = Random.nextInt(5, 20); val add = Random.nextInt(10, 30); val total = x + add; createQuestion("一个数加上 $add 等于 $total，这个数是 ( )", "$x", listOf("${x + 1}", "${x + 2}", "${x - 1}")) }
         26 -> { val total_apples = Random.nextInt(10, 30); val kids = Random.nextInt(3, 7); val quotient = total_apples / kids; val rem = total_apples % kids; createQuestion("$total_apples 个苹果平均分给 $kids 个小朋友，每人 ${quotient} 个，还剩 ( ) 个。", "$rem", listOf("${if (rem > 0) rem - 1 else 1}", "${rem + 1}", "${rem + 2}")) }
-        else -> { val son = Random.nextInt(4, 9); val n = Random.nextInt(3, 6); val dad = son * n; createMathQ("今年爸爸 $dad 岁，小欣 $son 岁，爸爸的年龄是小欣的多少倍？", n) }
+        else -> { val n = Random.nextInt(3, 5); val son = if (n == 3) Random.nextInt(10, 13) else Random.nextInt(7, 11); val dad = son * n; createMathQ("今年爸爸 $dad 岁，小欣 $son 岁，爸爸的年龄是小欣的多少倍？", n) }
         }
         val typeName = if (idx < 27) "old-" + advancedTypeNames[idx] else "old-" + advancedTypeNames[26]
         lastGeneratedOldMathType = typeName
@@ -495,21 +609,23 @@ object QuestionBank {
 
     private fun createMathQ(text: String, answer: Int): Question {
         val correct = answer.toString()
-        val wrongs = mutableSetOf<String>()
-        // 多轮尝试确保至少3个干扰项
-        for (i in 0 until 30) {
+        val wrongs = linkedSetOf<String>()
+        // 干扰项取“常见错误值”，紧贴正确答案，避免出现一眼排除的离谱选项：
+        // ±1/±2 = 粗心算错；答案较大时加 ±10 = 进退位错误；中等大小加 ±3
+        val offsets = mutableListOf(1, -1, 2, -2)
+        if (answer >= 5) { offsets.add(3); offsets.add(-3) }
+        if (answer >= 20) { offsets.add(10); offsets.add(-10) }
+        for (off in offsets.shuffled()) {
             if (wrongs.size >= 3) break
-            // 扩大干扰范围，避免答案=0时负数过滤导致干扰项不足
-            val offset = Random.nextInt(-20, 21)
-            val w = answer + offset
-            if (w >= 0 && w.toString() != correct) wrongs.add(w.toString())
+            val w = answer + off
+            if (w >= 0 && w != answer) wrongs.add(w.toString())
         }
-        // 兜底：如果还是不足3个，用固定偏移补充
-        val fallbackOffsets = listOf(1, 2, 3, 5, 10, 15, 20)
-        for (off in fallbackOffsets) {
-            if (wrongs.size >= 3) break
-            val w = (answer + off).toString()
-            if (w != correct) wrongs.add(w)
+        // 兜底：仍不足 3 个时，向上取最接近的不同值
+        var d = 1
+        while (wrongs.size < 3 && d <= 12) {
+            val w = answer + d
+            if (w != answer) wrongs.add(w.toString())
+            d++
         }
         return createQuestion(text, correct, wrongs.toList())
     }
@@ -519,8 +635,22 @@ object QuestionBank {
         var allOptions = (uniqueWrongs.take(3) + correct).distinct()
         // 确保至少有3个选项（Question要求2-4个）
         if (allOptions.size < 3) {
-            if (!allOptions.contains("其他")) allOptions = allOptions + "其他"
-            if (allOptions.size < 3 && !allOptions.contains("以上")) allOptions = allOptions + "以上"
+            val correctNum = correct.toIntOrNull()
+            if (correctNum != null) {
+                // 数字题：用临近数字补足，而不是“其他/以上”这种不自然的选项
+                var d = 1
+                while (allOptions.size < 3 && d <= 10) {
+                    for (v in listOf(correctNum + d, correctNum - d)) {
+                        val cand = v.toString()
+                        if (allOptions.size < 3 && v >= 0 && cand != correct && !allOptions.contains(cand)) {
+                            allOptions = allOptions + cand
+                        }
+                    }
+                    d++
+                }
+            }
+            if (allOptions.size < 3 && !allOptions.contains("其他")) allOptions = allOptions + "其他"
+            if (allOptions.size < 3 && !allOptions.contains("以上都不对")) allOptions = allOptions + "以上都不对"
         }
         val shuffled = allOptions.shuffled()
         return Question(text, shuffled, shuffled.indexOf(correct))

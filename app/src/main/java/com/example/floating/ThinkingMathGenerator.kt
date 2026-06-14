@@ -141,9 +141,9 @@ object ThinkingMathGenerator {
         return when (Random.nextInt(4)) {
             // x 年后年龄差不变
             0 -> {
-                val elder = Random.nextInt(28, 50)
-                val younger = Random.nextInt(5, 15)
-                val diff = elder - younger
+                val younger = Random.nextInt(6, 12)
+                val diff = Random.nextInt(3, 12)
+                val elder = younger + diff
                 val years = Random.nextInt(3, 20)
                 createQuestion(
                     "今年姐姐 $elder 岁，妹妹 $younger 岁，$years 年后姐姐比妹妹大几岁？",
@@ -151,12 +151,12 @@ object ThinkingMathGenerator {
                     listOf(diff + years, diff - years, diff + 1, diff + years / 2).filter { it != diff && it > 0 }.map { "$it" }
                 )
             }
-            // x 年前/后年龄差不变
+            // x 年前年龄差不变
             1 -> {
-                val elder = Random.nextInt(30, 48)
-                val younger = Random.nextInt(4, 12)
-                val diff = elder - younger
-                val yearsAgo = Random.nextInt(3, younger - 1)
+                val younger = Random.nextInt(6, 12)
+                val diff = Random.nextInt(3, 12)
+                val elder = younger + diff
+                val yearsAgo = Random.nextInt(2, younger)
                 createQuestion(
                     "姐姐今年 $elder 岁，妹妹 $younger 岁，$yearsAgo 年前姐姐比妹妹大几岁？",
                     "$diff",
@@ -326,13 +326,15 @@ object ThinkingMathGenerator {
                     wrongs.map { "$it" }
                 )
             }
-            // 三角形数（1,3,6,10,15,...）
+            // 三角形数（1,3,6,10,15,...）相邻差 +2,+3,+4,+5,+6...
             2 -> {
                 val seq = mutableListOf(1)
-                for (i in 1 until 5) seq.add(seq.last() + i + 1)
-                val answer = seq.last() + 5
-                val wrongs = listOf(answer + 1, answer - 1, seq.last() + 4, answer + 2)
-                    .filter { it != answer }.distinct().take(3)
+                for (i in 1 until 5) seq.add(seq.last() + i + 1)   // 差为 2,3,4,5 -> seq=[1,3,6,10,15]
+                val nextDiff = 6                                    // 下一个差是 +6
+                val answer = seq.last() + nextDiff                  // 15 + 6 = 21
+                // 干扰项：seq.last()+5(误以为差不变的常见错误) 等
+                val wrongs = listOf(seq.last() + 5, answer + 1, answer - 2, seq.last() + 7)
+                    .filter { it != answer && it > 0 }.distinct().take(3)
                 createQuestion(
                     "找规律填数：${seq.joinToString(", ")}, (?)",
                     "$answer",
@@ -593,8 +595,8 @@ object ThinkingMathGenerator {
 
     // ============ 年龄差（兜底） ============
     private fun generateAgeDifference(): Question {
-        val elder = Random.nextInt(30, 50)
-        val younger = Random.nextInt(4, 15)
+        val elder = Random.nextInt(32, 50)
+        val younger = Random.nextInt(4, 13)
         val diff = elder - younger
         val wrongs = listOf(diff + 1, diff - 1, elder - younger + 5, diff * 2)
             .filter { it != diff && it > 0 }.distinct().take(3)
