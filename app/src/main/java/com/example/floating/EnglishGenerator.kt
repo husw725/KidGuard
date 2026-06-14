@@ -37,12 +37,35 @@ object EnglishGenerator {
 
     private val allCategories = listOf(animals, colors, fruits, school, family)
 
-    val typeNames = listOf("zh2en", "en2zh", "letterCase", "letterOrder", "number", "dialogue", "classify")
+    // ===== 听音选图专用：单词 to emoji（图片）。按类别分组，干扰项取同类 emoji =====
+    private val pictureVocab: List<List<Pair<String, String>>> = listOf(
+        // 动物
+        listOf("cat" to "🐱", "dog" to "🐶", "pig" to "🐷", "duck" to "🦆", "bird" to "🐦",
+            "fish" to "🐟", "rabbit" to "🐰", "panda" to "🐼", "tiger" to "🐯", "monkey" to "🐵"),
+        // 水果
+        listOf("apple" to "🍎", "banana" to "🍌", "pear" to "🍐", "grape" to "🍇",
+            "peach" to "🍑", "watermelon" to "🍉", "strawberry" to "🍓", "orange" to "🍊"),
+        // 颜色（用色块 emoji）
+        listOf("red" to "🔴", "yellow" to "🟡", "blue" to "🔵", "green" to "🟢",
+            "black" to "⚫", "white" to "⚪", "orange" to "🟠", "purple" to "🟣"),
+        // 数字（用 keycap emoji）
+        listOf("one" to "1️⃣", "two" to "2️⃣", "three" to "3️⃣", "four" to "4️⃣", "five" to "5️⃣",
+            "six" to "6️⃣", "seven" to "7️⃣", "eight" to "8️⃣", "nine" to "9️⃣", "ten" to "🔟"),
+        // 食物
+        listOf("cake" to "🍰", "bread" to "🍞", "milk" to "🥛", "egg" to "🥚",
+            "rice" to "🍚", "noodles" to "🍜", "ice cream" to "🍦", "cookie" to "🍪"),
+        // 天气
+        listOf("sun" to "☀️", "rain" to "🌧️", "snow" to "❄️", "cloud" to "☁️", "rainbow" to "🌈")
+    )
+
+    val typeNames = listOf("listenPick", "zh2en", "en2zh", "letterCase", "letterOrder", "number", "dialogue", "classify")
     var lastGeneratedType: String = ""
 
     fun generate(): Question = dispatch(Random.nextInt(typeNames.size))
 
     fun generateWeighted(seenRound: Map<String, Int>, errors: Map<String, Int>): Question {
+        // 零基础启蒙：让“听音选图”成为主力（约 60% 概率），其余类型偶尔穿插
+        if (Random.nextInt(100) < 60) return dispatch(0)
         val maxRound = (seenRound.values.maxOrNull() ?: 0)
         val weights = typeNames.map { tn ->
             val key = "english-$tn"
@@ -62,14 +85,24 @@ object EnglishGenerator {
     private fun dispatch(idx: Int): Question {
         lastGeneratedType = "english-${typeNames[idx]}"
         return when (idx) {
-            0 -> zh2en()
-            1 -> en2zh()
-            2 -> letterCase()
-            3 -> letterOrder()
-            4 -> number()
-            5 -> dialogue()
+            0 -> listenAndPick()
+            1 -> zh2en()
+            2 -> en2zh()
+            3 -> letterCase()
+            4 -> letterOrder()
+            5 -> number()
+            6 -> dialogue()
             else -> classify()
         }
+    }
+
+    // ⓪ 听音选图（零基础启蒙主力）：朗读英文单词，4 个 emoji 图片里选对应的
+    private fun listenAndPick(): Question {
+        val cat = pictureVocab.random()
+        val (word, emoji) = cat.random()
+        val distractors = cat.filter { it.second != emoji }.shuffled().take(3).map { it.second }
+        val options = (distractors + emoji).shuffled()
+        return Question("🔊 听一听，点出听到的图片", options, options.indexOf(emoji), audioWord = word)
     }
 
     // ① 看中文选英文

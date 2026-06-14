@@ -13,6 +13,7 @@ import android.media.AudioManager
 import android.os.Build
 import android.os.CountDownTimer
 import android.os.Handler
+import android.media.MediaPlayer
 import android.os.IBinder
 import android.os.Looper
 import android.util.DisplayMetrics
@@ -56,6 +57,11 @@ class FloatingService : Service() {
     private lateinit var tvResultDesc: TextView
     private lateinit var btnRetry: Button
     private lateinit var tvTimer: TextView
+    private lateinit var btnReplayAudio: Button
+
+    // 英语“听音选图”用的预置音频播放（不依赖手机语音引擎）
+    private var audioPlayer: MediaPlayer? = null
+    private var currentAudioWord: String? = null
 
     private var currentQuestions: List<Question> = emptyList()
     private var currentIndex = 0
@@ -157,6 +163,25 @@ class FloatingService : Service() {
         restoreOrStartQuiz()
         ReportScheduler.scheduleDailyReport(this)
     }
+
+    // 单词 -> res/raw 资源 id（小写、空格转下划线）；找不到返回 0
+    private fun audioResId(word: String): Int {
+        val name = word.lowercase().replace(" ", "_")
+        return resources.getIdentifier(name, "raw", packageName)
+    }
+
+    private fun playCurrentWord() {
+        val word = currentAudioWord ?: return
+        val resId = audioResId(word)
+        if (resId == 0) return
+        try {
+            audioPlayer?.release()
+            audioPlayer = MediaPlayer.create(this, resId)?.apply {
+                setOnCompletionListener { mp -> mp.release(); if (audioPlayer === mp) audioPlayer = null }
+                start()
+            }
+        } catch (e: Exception) {}
+    }
     
     private fun setImmersive(immersive: Boolean) {
         if (immersive) {
@@ -187,12 +212,14 @@ class FloatingService : Service() {
         tvResultDesc = floatingView.findViewById(R.id.tv_result_desc)
         btnRetry = floatingView.findViewById(R.id.btn_retry)
         tvTimer = floatingView.findViewById(R.id.tv_timer)
+        btnReplayAudio = floatingView.findViewById(R.id.btn_replay_audio)
 
         btnAns1.setOnClickListener { checkAnswer(0) }
         btnAns2.setOnClickListener { checkAnswer(1) }
         btnAns3.setOnClickListener { checkAnswer(2) }
         btnAns4.setOnClickListener { checkAnswer(3) }
         btnRetry.setOnClickListener { startQuiz() }
+        btnReplayAudio.setOnClickListener { playCurrentWord() }
 
         tvQuestion.setOnClickListener {
             val currentTime = System.currentTimeMillis()
@@ -260,20 +287,33 @@ class FloatingService : Service() {
         tvProgressText.text = "正在闯关：第 ${currentIndex + 1}/${currentQuestions.size} 题"
         quizProgressBar.max = currentQuestions.size
         quizProgressBar.progress = currentIndex
-        tvQuestion.text = q.text
-        
+
+        // 听音选图题：播放单词发音、放大 emoji 选项、显示重听按钮
+        currentAudioWord = q.audioWord
+        val isAudio = q.audioWord != null
+        val hasAudio = isAudio && audioResId(q.audioWord!!) != 0
+        if (isAudio && !hasAudio) {
+            tvQuestion.text = "请选出：${q.audioWord}"   // 兜底：万一音频缺失，显示单词
+        } else {
+            tvQuestion.text = q.text
+        }
+        btnReplayAudio.visibility = if (isAudio) View.VISIBLE else View.GONE
+        val optionTextSize = if (isAudio) 34f else 18f
+
         val buttons = listOf(btnAns1, btnAns2, btnAns3, btnAns4)
         buttons.forEachIndexed { index, button ->
             val option = q.options.getOrNull(index)
             if (option != null) {
                 button.text = option
+                button.textSize = optionTextSize
                 button.visibility = View.VISIBLE
             } else {
                 button.visibility = View.GONE
             }
         }
-        
+
         setButtonsEnabled(true); tvFeedback.visibility = View.INVISIBLE
+        if (hasAudio) handler.postDelayed({ playCurrentWord() }, 350)
     }
 
     private fun setButtonsEnabled(e: Boolean) {
@@ -285,7 +325,10 @@ class FloatingService : Service() {
         val q = currentQuestions[currentIndex]; setButtonsEnabled(false)
         val isCorrect = (idx == q.correctIndex)
         val isMath = QuestionBank.isMathQuestion(q.text)
-        if (isCorrect) correctCount++ else wrongQuestionsList.add("${q.text} (正确答案: ${q.options[q.correctIndex]})")
+        if (isCorrect) correctCount++ else {
+            val desc = if (q.audioWord != null) "听音选图「${q.audioWord}」" else q.text
+            wrongQuestionsList.add("$desc (正确答案: ${q.options[q.correctIndex]})")
+        }
         QuestionBank.recordResult(this, q, isCorrect, isMath)
         QuestionBank.updateDifficulty(this, isCorrect)   // 答题表现驱动难度自适应
         tvFeedback.visibility = View.VISIBLE
@@ -419,6 +462,8 @@ class FloatingService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         countDownTimer?.cancel(); handler.removeCallbacksAndMessages(null)
+        try { audioPlayer?.release() } catch (e: Exception) {}
+        audioPlayer = null
         if (::floatingView.isInitialized) try { windowManager.removeView(floatingView) } catch (e: Exception) {}
         scheduleRestart()
     }

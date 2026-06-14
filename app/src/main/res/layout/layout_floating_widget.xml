@@ -46,12 +46,26 @@
                 android:id="@+id/tv_question"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="32dp"
+                android:layout_marginBottom="16dp"
                 android:gravity="center"
                 android:text="题目加载中..."
                 android:textColor="#FFFFFF"
                 android:textSize="26sp"
                 android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btn_replay_audio"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                android:background="@drawable/btn_option_style"
+                android:paddingLeft="24dp"
+                android:paddingRight="24dp"
+                android:text="🔊 再听一次"
+                android:textAllCaps="false"
+                android:textColor="#333333"
+                android:textSize="18sp"
+                android:visibility="gone" />
 
             <LinearLayout
                 android:layout_width="match_parent"
