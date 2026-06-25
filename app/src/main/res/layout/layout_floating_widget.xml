@@ -42,6 +42,35 @@
                 android:progressDrawable="@android:drawable/progress_horizontal"
                 android:progress="0" />
 
+            <!-- 家长消息横幅（飞书远程发来，默认隐藏）-->
+            <TextView
+                android:id="@+id/tv_parent_msg"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="10dp"
+                android:background="@drawable/bg_quiz_card"
+                android:padding="12dp"
+                android:gravity="center"
+                android:text=""
+                android:textColor="#FFF59D"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+            <!-- 孩子快捷回复（有家长消息时显示）-->
+            <LinearLayout
+                android:id="@+id/quick_reply_row"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                android:orientation="horizontal"
+                android:visibility="gone">
+                <Button android:id="@+id/btn_qr_1" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1" android:layout_margin="3dp" android:background="@drawable/btn_option_style" android:text="好的👌" android:textColor="#333333" android:textSize="15sp" android:textAllCaps="false" />
+                <Button android:id="@+id/btn_qr_2" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1" android:layout_margin="3dp" android:background="@drawable/btn_option_style" android:text="知道啦" android:textColor="#333333" android:textSize="15sp" android:textAllCaps="false" />
+                <Button android:id="@+id/btn_qr_3" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1" android:layout_margin="3dp" android:background="@drawable/btn_option_style" android:text="想你了❤️" android:textColor="#333333" android:textSize="15sp" android:textAllCaps="false" />
+                <Button android:id="@+id/btn_qr_4" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1" android:layout_margin="3dp" android:background="@drawable/btn_option_style" android:text="等下就好" android:textColor="#333333" android:textSize="15sp" android:textAllCaps="false" />
+            </LinearLayout>
+
             <TextView
                 android:id="@+id/tv_question"
                 android:layout_width="wrap_content"
@@ -111,6 +140,48 @@
                     android:textAllCaps="false"
                     android:textColor="#333333"
                     android:textSize="18sp" />
+            </LinearLayout>
+
+            <!-- 手输得数题：数字键盘 (③) -->
+            <LinearLayout
+                android:id="@+id/input_pad"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/tv_input_display"
+                    android:layout_width="match_parent"
+                    android:layout_height="56dp"
+                    android:layout_marginBottom="8dp"
+                    android:background="@drawable/btn_option_style"
+                    android:gravity="center"
+                    android:text=""
+                    android:textColor="#333333"
+                    android:textSize="28sp"
+                    android:textStyle="bold" />
+
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                    <Button android:id="@+id/btn_k1" android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1" android:layout_margin="3dp" android:background="@drawable/btn_option_style" android:text="1" android:textColor="#333333" android:textSize="22sp" android:textAllCaps="false" />
+                    <Button android:id="@+id/btn_k2" android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1" android:layout_margin="3dp" android:background="@drawable/btn_option_style" android:text="2" android:textColor="#333333" android:textSize="22sp" android:textAllCaps="false" />
+                    <Button android:id="@+id/btn_k3" android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1" android:layout_margin="3dp" android:background="@drawable/btn_option_style" android:text="3" android:textColor="#333333" android:textSize="22sp" android:textAllCaps="false" />
+                </LinearLayout>
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                    <Button android:id="@+id/btn_k4" android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1" android:layout_margin="3dp" android:background="@drawable/btn_option_style" android:text="4" android:textColor="#333333" android:textSize="22sp" android:textAllCaps="false" />
+                    <Button android:id="@+id/btn_k5" android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1" android:layout_margin="3dp" android:background="@drawable/btn_option_style" android:text="5" android:textColor="#333333" android:textSize="22sp" android:textAllCaps="false" />
+                    <Button android:id="@+id/btn_k6" android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1" android:layout_margin="3dp" android:background="@drawable/btn_option_style" android:text="6" android:textColor="#333333" android:textSize="22sp" android:textAllCaps="false" />
+                </LinearLayout>
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                    <Button android:id="@+id/btn_k7" android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1" android:layout_margin="3dp" android:background="@drawable/btn_option_style" android:text="7" android:textColor="#333333" android:textSize="22sp" android:textAllCaps="false" />
+                    <Button android:id="@+id/btn_k8" android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1" android:layout_margin="3dp" android:background="@drawable/btn_option_style" android:text="8" android:textColor="#333333" android:textSize="22sp" android:textAllCaps="false" />
+                    <Button android:id="@+id/btn_k9" android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1" android:layout_margin="3dp" android:background="@drawable/btn_option_style" android:text="9" android:textColor="#333333" android:textSize="22sp" android:textAllCaps="false" />
+                </LinearLayout>
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                    <Button android:id="@+id/btn_kdel" android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1" android:layout_margin="3dp" android:background="@drawable/btn_option_style" android:text="⌫" android:textColor="#333333" android:textSize="22sp" android:textAllCaps="false" />
+                    <Button android:id="@+id/btn_k0" android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1" android:layout_margin="3dp" android:background="@drawable/btn_option_style" android:text="0" android:textColor="#333333" android:textSize="22sp" android:textAllCaps="false" />
+                    <Button android:id="@+id/btn_kok" android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1" android:layout_margin="3dp" android:background="@drawable/btn_option_style" android:text="✓ 确定" android:textColor="#333333" android:textSize="20sp" android:textAllCaps="false" />
+                </LinearLayout>
             </LinearLayout>
 
             <TextView

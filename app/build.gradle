@@ -3,6 +3,11 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
+// 飞书密钥从 gitignore 的 feishu.properties 读取（不进 git）
+def feishuProps = new Properties()
+def feishuFile = rootProject.file("feishu.properties")
+if (feishuFile.exists()) feishuProps.load(new FileInputStream(feishuFile))
+
 android {
     namespace 'com.example.floating'
     compileSdk 33
@@ -13,6 +18,9 @@ android {
         targetSdk 33
         versionCode 1
         versionName "1.0"
+        buildConfigField "String", "FEISHU_APP_ID", "\"${feishuProps.getProperty('appId', '')}\""
+        buildConfigField "String", "FEISHU_APP_SECRET", "\"${feishuProps.getProperty('appSecret', '')}\""
+        buildConfigField "String", "FEISHU_CHAT_ID", "\"${feishuProps.getProperty('chatId', '')}\""
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -23,6 +31,7 @@ android {
     }
     buildFeatures {
         viewBinding true
+        buildConfig true
     }
 }
 

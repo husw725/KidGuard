@@ -3,41 +3,15 @@ package com.example.floating
 import kotlin.random.Random
 
 /**
- * 英语启蒙生成器 — 对标人教版 PEP 三年级起点
- * 纯文字选择题（无发音/图片）：中英互译、字母大小写与顺序、情景对话、单词归类。
- * 干扰项尽量取同类词，保证有迷惑性又适合启蒙。
+ * 英语启蒙生成器 —— 幼儿/零基础，听力优先。
+ * 主体是“听音选图”（听发音→点 emoji 图片，sound→meaning 直连，不经中文翻译）；
+ * 新词“先教后测”：第一次出现给教学卡（题干露出单词+图，发音），之后才隐藏答案考。
+ * 另保留少量字母大小写/顺序认读（纯视觉，为以后自然拼读做铺垫）。
+ * 选词由 QuestionBank 传入的逐词掌握度驱动（学习中的词反复出现、已掌握的少出、新词缓慢引入）。
  */
 object EnglishGenerator {
 
-    // ===== 分类词库（英文 to 中文）=====
-    private val animals = listOf(
-        "cat" to "猫", "dog" to "狗", "pig" to "猪", "duck" to "鸭子", "bird" to "鸟",
-        "fish" to "鱼", "rabbit" to "兔子", "panda" to "熊猫", "tiger" to "老虎", "monkey" to "猴子"
-    )
-    private val colors = listOf(
-        "red" to "红色", "yellow" to "黄色", "blue" to "蓝色", "green" to "绿色",
-        "black" to "黑色", "white" to "白色", "orange" to "橙色", "pink" to "粉色"
-    )
-    private val fruits = listOf(
-        "apple" to "苹果", "banana" to "香蕉", "pear" to "梨", "grape" to "葡萄",
-        "peach" to "桃子", "watermelon" to "西瓜"
-    )
-    private val school = listOf(
-        "pen" to "钢笔", "pencil" to "铅笔", "book" to "书", "bag" to "书包",
-        "ruler" to "尺子", "desk" to "书桌", "chair" to "椅子"
-    )
-    private val family = listOf(
-        "father" to "爸爸", "mother" to "妈妈", "brother" to "哥哥", "sister" to "姐姐",
-        "grandpa" to "爷爷", "grandma" to "奶奶"
-    )
-    private val numbers = listOf(
-        "one" to "1", "two" to "2", "three" to "3", "four" to "4", "five" to "5",
-        "six" to "6", "seven" to "7", "eight" to "8", "nine" to "9", "ten" to "10"
-    )
-
-    private val allCategories = listOf(animals, colors, fruits, school, family)
-
-    // ===== 听音选图专用：单词 to emoji（图片）。按类别分组，干扰项取同类 emoji =====
+    // 听音选图词库：单词 to emoji（图片），按主题分组，干扰项取同主题 emoji
     private val pictureVocab: List<List<Pair<String, String>>> = listOf(
         // 动物
         listOf("cat" to "🐱", "dog" to "🐶", "pig" to "🐷", "duck" to "🦆", "bird" to "🐦",
@@ -58,70 +32,59 @@ object EnglishGenerator {
         listOf("sun" to "☀️", "rain" to "🌧️", "snow" to "❄️", "cloud" to "☁️", "rainbow" to "🌈")
     )
 
-    val typeNames = listOf("listenPick", "zh2en", "en2zh", "letterCase", "letterOrder", "number", "dialogue", "classify")
+    private data class Word(val en: String, val emoji: String, val cat: Int)
+    private val allWords: List<Word> by lazy {
+        pictureVocab.flatMapIndexed { ci, cat -> cat.map { Word(it.first, it.second, ci) } }
+    }
+
     var lastGeneratedType: String = ""
+    var lastWord: String = ""        // 本题对应的英文单词（仅听音选图有，供 QuestionBank 标记“已引入”）
 
-    fun generate(): Question = dispatch(Random.nextInt(typeNames.size))
+    fun generate(): Question = generateWeighted(emptyMap())
 
-    fun generateWeighted(seenRound: Map<String, Int>, errors: Map<String, Int>): Question {
-        // 零基础启蒙：让“听音选图”成为主力（约 60% 概率），其余类型偶尔穿插
-        if (Random.nextInt(100) < 60) return dispatch(0)
-        val maxRound = (seenRound.values.maxOrNull() ?: 0)
-        val weights = typeNames.map { tn ->
-            val key = "english-$tn"
-            val lastSeen = seenRound[key] ?: 0
-            val missed = if (lastSeen > 0) maxRound - lastSeen else maxRound + 1
-            val e = errors[key] ?: 0
-            missed * 2 + e * 5 + 1
+    // mastery: 单词 -> 答对次数（不在表=全新词；0..2=学习中；>=3=已掌握）
+    fun generateWeighted(mastery: Map<String, Int>): Question {
+        lastWord = ""
+        // 听力为主（约 80%），字母认读为辅
+        if (Random.nextInt(100) < 80) {
+            lastGeneratedType = "english-listenPick"
+            return listenAndPick(mastery)
+        }
+        return if (Random.nextBoolean()) {
+            lastGeneratedType = "english-letterCase"; letterCase()
+        } else {
+            lastGeneratedType = "english-letterOrder"; letterOrder()
+        }
+    }
+
+    // 听音选图：掌握度加权选词 + 先教后测
+    private fun listenAndPick(mastery: Map<String, Int>): Question {
+        val weights = allWords.map { w ->
+            when (val c = mastery[w.en]) {
+                null -> 3        // 全新词：缓慢引入
+                in 0..2 -> 5     // 学习中：反复出现直到掌握
+                else -> 1        // 已掌握：偶尔复现
+            }
         }
         val total = weights.sum()
         var r = Random.nextInt(total)
         var idx = 0
-        for (w in weights) { r -= w; if (r < 0) break; idx++ }
-        if (idx >= typeNames.size) idx = typeNames.size - 1
-        return dispatch(idx)
+        for (x in weights) { r -= x; if (r < 0) break; idx++ }
+        if (idx >= allWords.size) idx = allWords.size - 1
+
+        val target = allWords[idx]
+        lastWord = target.en
+        val distractors = allWords.filter { it.cat == target.cat && it.emoji != target.emoji }
+            .shuffled().take(3).map { it.emoji }
+        val options = (distractors + target.emoji).shuffled()
+
+        val isNew = !mastery.containsKey(target.en)   // 先教后测：新词露出答案，旧词隐藏
+        val text = if (isNew) "🆕 这是 ${target.emoji} ${target.en}，听一听，点一下它"
+        else "🔊 听一听，点出听到的图片"
+        return Question(text, options, options.indexOf(target.emoji), audioWord = target.en)
     }
 
-    private fun dispatch(idx: Int): Question {
-        lastGeneratedType = "english-${typeNames[idx]}"
-        return when (idx) {
-            0 -> listenAndPick()
-            1 -> zh2en()
-            2 -> en2zh()
-            3 -> letterCase()
-            4 -> letterOrder()
-            5 -> number()
-            6 -> dialogue()
-            else -> classify()
-        }
-    }
-
-    // ⓪ 听音选图（零基础启蒙主力）：朗读英文单词，4 个 emoji 图片里选对应的
-    private fun listenAndPick(): Question {
-        val cat = pictureVocab.random()
-        val (word, emoji) = cat.random()
-        val distractors = cat.filter { it.second != emoji }.shuffled().take(3).map { it.second }
-        val options = (distractors + emoji).shuffled()
-        return Question("🔊 听一听，点出听到的图片", options, options.indexOf(emoji), audioWord = word)
-    }
-
-    // ① 看中文选英文
-    private fun zh2en(): Question {
-        val cat = allCategories.random()
-        val (en, zh) = cat.random()
-        val wrongs = cat.filter { it.first != en }.shuffled().take(3).map { it.first }
-        return createQuestion("“$zh”用英语怎么说？", en, wrongs)
-    }
-
-    // ② 看英文选中文
-    private fun en2zh(): Question {
-        val cat = allCategories.random()
-        val (en, zh) = cat.random()
-        val wrongs = cat.filter { it.second != zh }.shuffled().take(3).map { it.second }
-        return createQuestion("单词 “$en” 的意思是？", zh, wrongs)
-    }
-
-    // ③ 字母大小写
+    // 字母大小写
     private fun letterCase(): Question {
         val i = Random.nextInt(26)
         val upper = ('A' + i).toString()
@@ -135,7 +98,7 @@ object EnglishGenerator {
         }
     }
 
-    // ④ 字母顺序
+    // 字母顺序
     private fun letterOrder(): Question {
         return if (Random.nextBoolean()) {
             val i = Random.nextInt(25)          // A..Y，问后一个
@@ -154,48 +117,8 @@ object EnglishGenerator {
         }
     }
 
-    // ⑤ 数字英文
-    private fun number(): Question {
-        val (en, num) = numbers.random()
-        return if (Random.nextBoolean()) {
-            val wrongs = numbers.filter { it.first != en }.shuffled().take(3).map { it.first }
-            createQuestion("数字 “$num” 的英语是？", en, wrongs)
-        } else {
-            val wrongs = numbers.filter { it.second != num }.shuffled().take(3).map { it.second }
-            createQuestion("单词 “$en” 表示数字几？", num, wrongs)
-        }
-    }
-
-    // ⑥ 情景对话
-    private fun dialogue(): Question {
-        val items = listOf(
-            Triple("早上见到老师，应该说：", "Good morning!", listOf("Good night!", "Goodbye!", "Thank you!")),
-            Triple("别人帮助了你，要表示感谢，说：", "Thank you!", listOf("Sorry!", "Hello!", "Goodbye!")),
-            Triple("和同学说“再见”，用英语是：", "Goodbye!", listOf("Hello!", "Good morning!", "Thank you!")),
-            Triple("见面打招呼“你好”，用英语是：", "Hello!", listOf("Bye!", "Sorry!", "Good night!")),
-            Triple("不小心踩到别人，应该说：", "Sorry!", listOf("Thank you!", "Hello!", "Good morning!")),
-            Triple("晚上睡觉前，对妈妈说：", "Good night!", listOf("Good morning!", "Thank you!", "Hello!")),
-            Triple("老师说“Sit down.”是让你：", "坐下", listOf("起立", "看书", "安静")),
-            Triple("老师说“Stand up.”是让你：", "起立", listOf("坐下", "看书", "举手"))
-        ).random()
-        return createQuestion(items.first, items.second, items.third)
-    }
-
-    // ⑦ 单词归类
-    private fun classify(): Question {
-        val items = listOf(
-            Triple("下面哪个是动物？", animals.random().first, listOf(colors.random().first, fruits.random().first, school.random().first)),
-            Triple("下面哪个是颜色？", colors.random().first, listOf(animals.random().first, fruits.random().first, numbers.random().first)),
-            Triple("下面哪个是水果？", fruits.random().first, listOf(animals.random().first, colors.random().first, school.random().first)),
-            Triple("下面哪个是文具？", school.random().first, listOf(animals.random().first, colors.random().first, fruits.random().first)),
-            Triple("下面哪个表示数字？", numbers.random().first, listOf(animals.random().first, colors.random().first, fruits.random().first))
-        ).random()
-        return createQuestion(items.first, items.second, items.third)
-    }
-
     private fun createQuestion(text: String, correct: String, wrongs: List<String>): Question {
         val uniqueWrongs = wrongs.filter { it != correct }.distinct().take(3).toMutableList()
-        // 兜底：极少数情况下同类词不足，用字母补足，保证至少 3 个选项
         val filler = listOf("A", "B", "C", "D", "E", "F")
         while (uniqueWrongs.size < 2) {
             val f = filler.random()

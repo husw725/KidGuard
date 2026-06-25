@@ -3,3 +3,6 @@
 
 # Ignore Gradle build output directory
 build
+
+# 飞书机器人密钥（本地，勿提交）
+feishu.properties

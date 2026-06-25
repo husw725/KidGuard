@@ -76,15 +76,18 @@ object SmartCalcGenerator {
             "${s.a} ${s.op} ${s.r}",                         // 忘了调整
             "${s.a} ${s.op} ${s.r} $sign ${s.diff * 10}"     // 调整量多了 10 倍
         )
-        return choice("${s.a} ${s.op} ${s.nr} 怎样算又快又对？", correct, wrongs)
+        return choice("${s.a} ${s.op} ${s.nr} 怎样算又快又对？", correct, wrongs,
+            "把 ${s.nr} 看成 ${s.r}，正确算法是 $correct")
     }
 
     // ② 按方法算结果
     private fun roundCompute(): Question {
         val s = roundSetup()
         val ans = roundValue(s)
+        val sign = adjustSign(s)
         val text = "用凑整法算：${s.a} ${s.op} ${s.nr}（把 ${s.nr} 看成 ${s.r}）= ( )"
-        return numChoice(text, ans, listOf(ans + s.diff, ans - s.diff, ans + 2 * s.diff))
+        return numChoice(text, ans, listOf(ans + s.diff, ans - s.diff, ans + 2 * s.diff),
+            "${s.a} ${s.op} ${s.nr} = ${s.a} ${s.op} ${s.r} $sign ${s.diff} = $ans")
     }
 
     // ③ 填调整量
@@ -92,7 +95,8 @@ object SmartCalcGenerator {
         val s = roundSetup()
         val sign = adjustSign(s)
         val text = "${s.a} ${s.op} ${s.nr} = ${s.a} ${s.op} ${s.r} $sign (  )"
-        return numChoice(text, s.diff, listOf(s.diff + 1, s.diff + 2, s.diff * 10))
+        return numChoice(text, s.diff, listOf(s.diff + 1, s.diff + 2, s.diff * 10),
+            "${s.nr} 与 ${s.r} 相差 ${s.diff}，所以填 ${s.diff}")
     }
 
     // ============ 加减混合搬家凑整 ============
@@ -118,7 +122,8 @@ object SmartCalcGenerator {
             "${s.a} - ${s.b} - ${s.c}",      // 加号看成减号
             "${s.b} + ${s.c} - ${s.a}"       // 顺序搬错
         )
-        return choice("${s.a} - ${s.b} + ${s.c} 怎样算更简便？", correct, wrongs)
+        return choice("${s.a} - ${s.b} + ${s.c} 怎样算更简便？", correct, wrongs,
+            "把能凑整的 ${s.a} 和 ${s.c} 挪到一起先算：$correct")
     }
 
     // ⑤ 按方法算结果
@@ -126,18 +131,19 @@ object SmartCalcGenerator {
         val s = reorderSetup()
         val ans = s.t - s.b                              // = a + c - b
         val text = "简便算：${s.a} - ${s.b} + ${s.c}（先算 ${s.a} + ${s.c} = ${s.t}）= ( )"
-        return numChoice(text, ans, listOf(s.a - s.b - s.c, s.a + s.b - s.c, s.a - s.b))
+        return numChoice(text, ans, listOf(s.a - s.b - s.c, s.a + s.b - s.c, s.a - s.b),
+            "${s.a} - ${s.b} + ${s.c} = ${s.a} + ${s.c} - ${s.b} = ${s.t} - ${s.b} = $ans")
     }
 
     // ============ 公共方法 ============
     // 文字选项（选方法题）：给定正确表达式 + 3 个错误表达式
-    private fun choice(text: String, correct: String, wrongs: List<String>): Question {
+    private fun choice(text: String, correct: String, wrongs: List<String>, tip: String? = null): Question {
         val opts = (wrongs.filter { it != correct }.distinct().take(3) + correct).shuffled()
-        return Question(text, opts, opts.indexOf(correct))
+        return Question(text, opts, opts.indexOf(correct), tip = tip)
     }
 
     // 数字选项（算结果 / 填空题）：干扰项优先用常见错误值，不足时用临近数补足
-    private fun numChoice(text: String, answer: Int, wrongCandidates: List<Int>): Question {
+    private fun numChoice(text: String, answer: Int, wrongCandidates: List<Int>, tip: String? = null): Question {
         val wrongs = LinkedHashSet<String>()
         for (w in wrongCandidates) if (w >= 0 && w != answer) wrongs.add(w.toString())
         var d = 1
@@ -147,6 +153,6 @@ object SmartCalcGenerator {
             d++
         }
         val opts = (wrongs.toList().take(3) + answer.toString()).shuffled()
-        return Question(text, opts, opts.indexOf(answer.toString()))
+        return Question(text, opts, opts.indexOf(answer.toString()), tip = tip)
     }
 }

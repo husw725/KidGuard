@@ -1,20 +1,26 @@
 package com.example.floating
 
 import android.content.Context
+import android.content.SharedPreferences
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Calendar
 import kotlin.random.Random
 
 data class Question(
     val text: String,
     val options: List<String>,
     val correctIndex: Int,
-    val audioWord: String? = null   // 非空 = “听音选图”题：朗读该英文单词，选项为 emoji 图片
+    val audioWord: String? = null,  // 非空 = “听音选图”题：朗读该英文单词，选项为 emoji 图片
+    val tip: String? = null,        // 答错时显示的一句话讲解（点中误区）
+    val inputAnswer: String? = null // 非空 = 手输得数题（数字键盘），不使用 options
 ) {
     init {
-        require(options.size in 2..4) { "Options must contain 2 to 4 items" }
-        require(options.distinct().size == options.size) { "Options must be unique" }
-        require(correctIndex in options.indices) { "CorrectIndex out of bounds" }
+        if (inputAnswer == null) {  // 输入题不依赖 options
+            require(options.size in 2..4) { "Options must contain 2 to 4 items" }
+            require(options.distinct().size == options.size) { "Options must be unique" }
+            require(correctIndex in options.indices) { "CorrectIndex out of bounds" }
+        }
     }
 
     fun toJsonObject(): JSONObject {
@@ -25,6 +31,8 @@ data class Question(
         obj.put("options", opts)
         obj.put("correctIndex", correctIndex)
         if (audioWord != null) obj.put("audioWord", audioWord)
+        if (tip != null) obj.put("tip", tip)
+        if (inputAnswer != null) obj.put("inputAnswer", inputAnswer)
         return obj
     }
 
@@ -43,7 +51,7 @@ data class Question(
         }
         
         val newOptions = (otherOptions.take(3) + correctOption).shuffled()
-        return Question(text, newOptions, newOptions.indexOf(correctOption), audioWord)
+        return Question(text, newOptions, newOptions.indexOf(correctOption), audioWord, tip)
     }
 
     companion object {
@@ -54,9 +62,12 @@ data class Question(
             for (i in 0 until optsArray.length()) opts.add(optsArray.getString(i))
             val correctIndex = obj.getInt("correctIndex")
             val audioWord = if (obj.has("audioWord")) obj.getString("audioWord") else null
+            val tip = if (obj.has("tip")) obj.getString("tip") else null
+            val inputAnswer = if (obj.has("inputAnswer")) obj.getString("inputAnswer") else null
+            if (inputAnswer != null) return Question(text, emptyList(), 0, audioWord, tip, inputAnswer)
             // 保持原始数据完整性，如果原始数据有问题，强制修正
             return try {
-                Question(text, opts, correctIndex, audioWord)
+                Question(text, opts, correctIndex, audioWord, tip)
             } catch (e: Exception) {
                 // 简单处理数据源错误，如果导入数据不规范则返回默认结构
                 val safeOpts = (opts.distinct().take(3) + "补全").shuffled()
@@ -84,6 +95,96 @@ object QuestionBank {
     private const val KEY_QUIZ_ROUND = "QuizRound"
     private const val KEY_DIFFICULTY = "Difficulty"
     private const val KEY_CONSEC_CORRECT = "ConsecCorrect"
+    private const val KEY_QUIZ_FAIL = "QuizFailCount"
+
+    fun getQuizFailCount(context: Context): Int =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getInt(KEY_QUIZ_FAIL, 0)
+
+    fun setQuizFailCount(context: Context, n: Int) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putInt(KEY_QUIZ_FAIL, n).apply()
+    }
+
+    // ===== ② 正向激励：连续学习天数 + 累计星星 =====
+    private const val KEY_STREAK = "StudyStreak"
+    private const val KEY_STREAK_DATE = "StreakDate"
+    private const val KEY_STARS = "StudyStars"
+
+    private fun dayKey(offsetDays: Int = 0): Int {
+        val c = Calendar.getInstance()
+        if (offsetDays != 0) c.add(Calendar.DAY_OF_MONTH, offsetDays)
+        return c.get(Calendar.YEAR) * 10000 + (c.get(Calendar.MONTH) + 1) * 100 + c.get(Calendar.DAY_OF_MONTH)
+    }
+
+    // 通关时调用：更新连续天数与星星，返回 (连续天数, 总星星)
+    fun recordPass(context: Context): Pair<Int, Int> {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val today = dayKey()
+        val lastDate = prefs.getInt(KEY_STREAK_DATE, 0)
+        var streak = prefs.getInt(KEY_STREAK, 0)
+        if (lastDate != today) {                       // 同一天多次通关只算一天
+            streak = if (lastDate == dayKey(-1)) streak + 1 else 1
+        }
+        val stars = prefs.getInt(KEY_STARS, 0) + 1
+        prefs.edit().putInt(KEY_STREAK, streak).putInt(KEY_STREAK_DATE, today).putInt(KEY_STARS, stars).apply()
+        return Pair(streak, stars)
+    }
+
+    // ===== ④ 家长辅导依据：薄弱点（按数学题型错误次数取前 2）=====
+    fun getWeakPointsText(context: Context): String? {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val mte = prefs.getString(KEY_MATH_TYPE_ERRORS, "{}") ?: "{}"
+        val counts = mutableListOf<Pair<String, Int>>()
+        try {
+            val obj = JSONObject(mte)
+            for (k in obj.keys()) counts.add(k to obj.getInt(k))
+        } catch (e: Exception) {}
+        val top = counts.filter { it.second > 0 }.sortedByDescending { it.second }
+            .map { weakName(it.first) }.distinct().take(2)
+        return if (top.isEmpty()) null else top.joinToString("、")
+    }
+
+    private fun weakName(key: String): String = when {
+        "smartcalc" in key -> "巧算/简便计算"
+        "tree" in key -> "植树问题"
+        "saw" in key -> "锯木问题"
+        "queue" in key -> "排队问题"
+        "stairs" in key || "climb" in key -> "爬楼梯问题"
+        "chicken" in key -> "鸡兔同笼"
+        "circle" in key -> "圆圈间隔问题"
+        "reverse" in key || "reorder" in key -> "倒推/凑整"
+        "age" in key -> "年龄问题"
+        "multiple" in key || "sum" in key -> "倍数问题"
+        "clock" in key -> "认识钟表"
+        "money" in key -> "人民币换算"
+        "unit" in key -> "单位换算"
+        "divide" in key || "remainder" in key -> "有余数除法"
+        "multiply" in key -> "表内乘法"
+        "pattern" in key || "sequence" in key -> "找规律"
+        else -> "数学应用题"
+    }
+
+    // ===== 英语逐词掌握度：单词 -> 答对次数（不在表=全新词；0..2=学习中；>=3=已掌握）=====
+    private const val KEY_ENGLISH_MASTERY = "EnglishMastery"
+
+    private fun loadEnglishMastery(prefs: SharedPreferences): MutableMap<String, Int> {
+        val m = mutableMapOf<String, Int>()
+        val s = prefs.getString(KEY_ENGLISH_MASTERY, "{}") ?: "{}"
+        try { val o = JSONObject(s); for (k in o.keys()) m[k] = o.getInt(k) } catch (e: Exception) {}
+        return m
+    }
+
+    private fun saveEnglishMastery(prefs: SharedPreferences, m: Map<String, Int>) {
+        val o = JSONObject(); m.forEach { (k, v) -> o.put(k, v) }
+        prefs.edit().putString(KEY_ENGLISH_MASTERY, o.toString()).apply()
+    }
+
+    // 答题后更新单词掌握度：答对 +1，答错清零
+    fun recordEnglishResult(context: Context, word: String, isCorrect: Boolean) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val m = loadEnglishMastery(prefs)
+        m[word] = if (isCorrect) (m[word] ?: 0) + 1 else 0
+        saveEnglishMastery(prefs, m)
+    }
 
     private val cloudQuestions = mutableListOf<Question>()
     private val errorRecords = mutableMapOf<String, Int>()
@@ -408,16 +509,24 @@ object QuestionBank {
         // 3. 英语启蒙（少量起步），按题型加权避免重复
         var englishAdded = 0
         guard = 0
+        val englishMastery = loadEnglishMastery(prefs)
         while (englishAdded < englishCount && selectedQuestions.size < count && guard < 50) {
             guard++
-            val q = EnglishGenerator.generateWeighted(mathTypeSeenRound, mathTypeErrors)
-            if (selectedQuestions.none { it.text == q.text }) {
+            val q = EnglishGenerator.generateWeighted(englishMastery)
+            // 听力题按单词去重（允许两道不同单词的听力题），其余按题干去重
+            val dup = selectedQuestions.any {
+                if (q.audioWord != null) it.audioWord == q.audioWord else it.text == q.text
+            }
+            if (!dup) {
                 selectedQuestions.add(q)
                 if (EnglishGenerator.lastGeneratedType.isNotEmpty())
                     mathTypeSeenRound[EnglishGenerator.lastGeneratedType] = currentRound + 1
+                val w = EnglishGenerator.lastWord
+                if (w.isNotEmpty() && !englishMastery.containsKey(w)) englishMastery[w] = 0  // 引入新词（先教后测）
                 englishAdded++
             }
         }
+        saveEnglishMastery(prefs, englishMastery)
 
         // 4. 数学 — 难度决定“奥数/思维题 : 课内题”的比例
         //    基础档(1)以课内为主，挑战档(3)奥数思维题更多，随孩子水平走
@@ -451,6 +560,11 @@ object QuestionBank {
         guard = 0
         while (selectedQuestions.size < count && guard < 100) {
             guard++
+            if (Random.nextInt(100) < 30) {              // 约 30% 出“手输得数”题，降低蒙对率（③）
+                val q = generateInputMath()
+                if (selectedQuestions.none { it.text == q.text }) selectedQuestions.add(q)
+                continue
+            }
             val (q, typeName) = if (currentDifficulty == 1) generateGrade2Math() else selectOldMathByWeight()
             if (selectedQuestions.none { it.text == q.text }) {
                 selectedQuestions.add(q)
@@ -611,6 +725,15 @@ object QuestionBank {
         val typeName = if (idx < 7) "old-" + grade2TypeNames[idx] else "old-" + grade2TypeNames[6]
         lastGeneratedOldMathType = typeName
         return Pair(q, typeName)
+    }
+
+    // 手输得数题：基础口算，去掉选项、降低蒙对率（③）
+    private fun generateInputMath(): Question {
+        return when (Random.nextInt(3)) {
+            0 -> { val a = Random.nextInt(11, 90); val b = Random.nextInt(11, 90); Question("$a + $b = ?", emptyList(), 0, inputAnswer = "${a + b}", tip = "可以先凑整十再加") }
+            1 -> { val a = Random.nextInt(30, 99); val b = Random.nextInt(10, a); Question("$a - $b = ?", emptyList(), 0, inputAnswer = "${a - b}", tip = "不够减时要向前一位借 1") }
+            else -> { val a = Random.nextInt(2, 10); val b = Random.nextInt(2, 10); Question("$a × $b = ?", emptyList(), 0, inputAnswer = "${a * b}", tip = "想一想 $a 的乘法口诀") }
+        }
     }
 
     private fun createMathQ(text: String, answer: Int): Question {

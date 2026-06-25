@@ -10,7 +10,7 @@ object ThinkingMathGenerator {
 
     fun generate(): Question {
         val type = Random.nextInt(12)
-        return when (type) {
+        val q = when (type) {
             0 -> generateTreePlanting()
             1 -> generateSawLog()
             2 -> generateAgeProblem()
@@ -25,11 +25,28 @@ object ThinkingMathGenerator {
             11 -> generateStairsProblem()
             else -> generateAgeDifference()
         }
+        return q.copy(tip = q.tip ?: tips[typeNames[type]])
     }
     // 加权版本：很久没出现的题型权重更高，答错过的题型优先
     var lastGeneratedType: String = ""
     private val typeNames = listOf("treePlanting","sawLog","ageProblem","queueProblem","ropeProblem",
         "numberPattern","sumMultiple","chickenRabbit","matchstick","reverseProblem","circleProblem","stairsProblem")
+
+    // 各题型答错时的一句话解题思路（点中误区）
+    private val tips = mapOf(
+        "treePlanting" to "两端都种时，棵数 = 间隔数 + 1",
+        "sawLog" to "锯 1 次断成 2 段，段数比次数多 1",
+        "ageProblem" to "两个人一起长大，年龄差永远不变",
+        "queueProblem" to "从两边数会重复数到自己，记得减 1",
+        "ropeProblem" to "用倒推法，从剩下的一步步往回算",
+        "numberPattern" to "先看相邻两个数是怎么变化的",
+        "sumMultiple" to "先求出 1 倍（1 份）是多少",
+        "chickenRabbit" to "假设全是鸡，多出来的腿 ÷ 2 就是兔子数",
+        "matchstick" to "第一个用几根，每多一个再加固定的几根",
+        "reverseProblem" to "倒推法：从最后的结果一步步往回算",
+        "circleProblem" to "围成一圈时，间隔数 = 人数（首尾相连）",
+        "stairsProblem" to "从 1 楼到 n 楼，其实只走了 (n−1) 层"
+    )
 
     fun generateWeighted(seenRound: Map<String, Int>, errors: Map<String, Int>): Question {
         // 用当前轮次减去 lastSeenRound 算 missed，但这里没有 currentRound
@@ -52,7 +69,7 @@ object ThinkingMathGenerator {
             idx++
         }
         lastGeneratedType = "thinking-${typeNames[idx]}"
-        return when (idx) {
+        val q = when (idx) {
             0 -> generateTreePlanting()
             1 -> generateSawLog()
             2 -> generateAgeProblem()
@@ -67,6 +84,7 @@ object ThinkingMathGenerator {
             11 -> generateStairsProblem()
             else -> generateAgeDifference()
         }
+        return q.copy(tip = q.tip ?: tips[typeNames[idx]])
     }
 
     // ============ ① 植树问题 ============

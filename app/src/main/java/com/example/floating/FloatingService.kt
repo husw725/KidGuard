@@ -58,10 +58,29 @@ class FloatingService : Service() {
     private lateinit var btnRetry: Button
     private lateinit var tvTimer: TextView
     private lateinit var btnReplayAudio: Button
+    private lateinit var inputPad: View
+    private lateinit var tvInputDisplay: TextView
 
     // 英语“听音选图”用的预置音频播放（不依赖手机语音引擎）
     private var audioPlayer: MediaPlayer? = null
     private var currentAudioWord: String? = null
+
+    // 手输得数题（③）
+    private var inputBuffer = ""
+    private var locked = false   // 答题后到下一题之间锁住输入，防重复作答
+
+    // 飞书远程：家长消息横幅 + 快捷回复 + 锁屏期间轮询
+    private lateinit var tvParentMsg: TextView
+    private lateinit var quickReplyRow: View
+    private val feishuPoll = object : Runnable {
+        override fun run() {
+            thread {
+                val cmds = FeishuClient.pollNewMessages(this@FloatingService)
+                if (cmds.isNotEmpty()) handler.post { cmds.forEach { applyRemoteCommand(it) } }
+            }
+            handler.postDelayed(this, 45_000)
+        }
+    }
 
     private var currentQuestions: List<Question> = emptyList()
     private var currentIndex = 0
@@ -81,6 +100,11 @@ class FloatingService : Service() {
         "真棒！回答正确 ✨", "太厉害啦！全对 🎉", "小欣真聪明 👏", "答对啦，继续加油 💪",
         "完全正确，了不起 🌟", "哇，你真棒 🦄", "答得漂亮 🍭", "聪明的小脑袋瓜 🧠✨",
         "正确！你是小学霸 📚", "棒极了，再接再厉 🚀"
+    )
+
+    // 通关时的随机标题（② 正向激励）
+    private val passTitles = listOf(
+        "挑战成功！🌟", "今天也很棒！🎉", "闯关成功 🏆", "小欣真厉害！💯", "又赢啦！🦄"
     )
 
     companion object {
@@ -162,6 +186,7 @@ class FloatingService : Service() {
         windowManager.addView(floatingView, params)
         restoreOrStartQuiz()
         ReportScheduler.scheduleDailyReport(this)
+        ReportScheduler.scheduleFeishuPoll(this)   // 未锁屏时也轮询飞书指令
     }
 
     // 单词 -> res/raw 资源 id（小写、空格转下划线）；找不到返回 0
@@ -221,6 +246,20 @@ class FloatingService : Service() {
         btnRetry.setOnClickListener { startQuiz() }
         btnReplayAudio.setOnClickListener { playCurrentWord() }
 
+        inputPad = floatingView.findViewById(R.id.input_pad)
+        tvInputDisplay = floatingView.findViewById(R.id.tv_input_display)
+        for (d in 0..9) {
+            val bid = resources.getIdentifier("btn_k$d", "id", packageName)
+            if (bid != 0) floatingView.findViewById<Button>(bid).setOnClickListener { appendDigit(d.toString()) }
+        }
+        floatingView.findViewById<Button>(R.id.btn_kdel).setOnClickListener { backspaceInput() }
+        floatingView.findViewById<Button>(R.id.btn_kok).setOnClickListener { submitInput() }
+
+        tvParentMsg = floatingView.findViewById(R.id.tv_parent_msg)
+        quickReplyRow = floatingView.findViewById(R.id.quick_reply_row)
+        listOf(R.id.btn_qr_1 to "好的👌", R.id.btn_qr_2 to "知道啦", R.id.btn_qr_3 to "想你了❤️", R.id.btn_qr_4 to "等下就好")
+            .forEach { (id, label) -> floatingView.findViewById<Button>(id).setOnClickListener { sendQuickReply(label) } }
+
         tvQuestion.setOnClickListener {
             val currentTime = System.currentTimeMillis()
             if (currentTime - lastQuestionClickTime > 1000) questionClickCount = 0
@@ -253,6 +292,8 @@ class FloatingService : Service() {
     }
 
     private fun restoreOrStartQuiz() {
+        val pauseLeft = getPauseUntil() - System.currentTimeMillis()
+        if (pauseLeft > 0) { unlockScreen(pauseLeft); return }   // 飞书远程暂停期：不锁
         val prefs = getSharedPreferences(PREFS_STATE, Context.MODE_PRIVATE)
         if (prefs.getBoolean(KEY_IN_PROGRESS, false)) {
             currentIndex = prefs.getInt(KEY_INDEX, 0)
@@ -272,6 +313,8 @@ class FloatingService : Service() {
     }
 
     private fun startQuiz() {
+        val pauseLeft = getPauseUntil() - System.currentTimeMillis()
+        if (pauseLeft > 0) { unlockScreen(pauseLeft); return }   // 飞书远程暂停期：不出题
         var count = maxOf(5, QuestionBank.getTotalQuestionConfig(this))
         if (QuestionBank.isFirstQuizToday(this)) {
             count = maxOf(5, count / 2)
@@ -298,6 +341,12 @@ class FloatingService : Service() {
             tvQuestion.text = q.text
         }
         btnReplayAudio.visibility = if (isAudio) View.VISIBLE else View.GONE
+
+        // 手输得数题：显示数字键盘（选项为空，4 个选项按钮会自动隐藏）
+        val isInput = q.inputAnswer != null
+        inputPad.visibility = if (isInput) View.VISIBLE else View.GONE
+        if (isInput) { inputBuffer = ""; tvInputDisplay.text = "" }
+
         val optionTextSize = if (isAudio) 34f else 18f
 
         val buttons = listOf(btnAns1, btnAns2, btnAns3, btnAns4)
@@ -312,7 +361,7 @@ class FloatingService : Service() {
             }
         }
 
-        setButtonsEnabled(true); tvFeedback.visibility = View.INVISIBLE
+        setButtonsEnabled(true); locked = false; tvFeedback.visibility = View.INVISIBLE
         if (hasAudio) handler.postDelayed({ playCurrentWord() }, 350)
     }
 
@@ -321,25 +370,58 @@ class FloatingService : Service() {
     }
 
     private fun checkAnswer(idx: Int) {
-        if (currentIndex >= currentQuestions.size) return
-        val q = currentQuestions[currentIndex]; setButtonsEnabled(false)
-        val isCorrect = (idx == q.correctIndex)
+        if (locked || currentIndex >= currentQuestions.size) return
+        val q = currentQuestions[currentIndex]
+        handleAnswer(q, idx == q.correctIndex)
+    }
+
+    private fun appendDigit(s: String) {
+        if (locked) return
+        if (inputBuffer.length < 5) { inputBuffer += s; tvInputDisplay.text = inputBuffer }
+    }
+
+    private fun backspaceInput() {
+        if (locked || inputBuffer.isEmpty()) return
+        inputBuffer = inputBuffer.dropLast(1); tvInputDisplay.text = inputBuffer
+    }
+
+    private fun submitInput() {
+        if (locked || inputBuffer.isEmpty() || currentIndex >= currentQuestions.size) return
+        val q = currentQuestions[currentIndex]
+        handleAnswer(q, inputBuffer == q.inputAnswer)
+    }
+
+    private fun handleAnswer(q: Question, isCorrect: Boolean) {
+        if (locked) return
+        locked = true; setButtonsEnabled(false)
         val isMath = QuestionBank.isMathQuestion(q.text)
         if (isCorrect) correctCount++ else {
             val desc = if (q.audioWord != null) "听音选图「${q.audioWord}」" else q.text
-            wrongQuestionsList.add("$desc (正确答案: ${q.options[q.correctIndex]})")
+            val ans = q.inputAnswer ?: q.options[q.correctIndex]
+            wrongQuestionsList.add("$desc (正确答案: $ans)")
         }
         QuestionBank.recordResult(this, q, isCorrect, isMath)
         QuestionBank.updateDifficulty(this, isCorrect)   // 答题表现驱动难度自适应
         tvFeedback.visibility = View.VISIBLE
-        if (isCorrect) {
+        if (q.audioWord != null) {
+            // 英语听音选图：答完显示“图 + 单词拼写”并复读一遍（音—形—义再连一次），更新逐词掌握度
+            QuestionBank.recordEnglishResult(this, q.audioWord!!, isCorrect)
+            val emoji = q.options[q.correctIndex]
+            tvFeedback.text = if (isCorrect) "真棒！$emoji ${q.audioWord}" else "正确答案：$emoji ${q.audioWord}"
+            tvFeedback.setTextColor(android.graphics.Color.parseColor(if (isCorrect) "#4CAF50" else "#FF5252"))
+            handler.postDelayed({ playCurrentWord() }, 300)
+            handler.postDelayed({ currentIndex++; saveState(); showCurrentQuestion() }, 1800)
+        } else if (isCorrect) {
             tvFeedback.text = praiseMessages.random(); tvFeedback.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
             handler.postDelayed({ currentIndex++; saveState(); showCurrentQuestion() }, 600)
         } else {
-            val label = ('A' + q.correctIndex).toString()
-            tvFeedback.text = "哎呀，答错啦！\n正确答案是: $label. ${q.options[q.correctIndex]}"
+            val correctText = if (q.inputAnswer != null) q.inputAnswer
+                else "${('A' + q.correctIndex)}. ${q.options[q.correctIndex]}"
+            val base = "哎呀，答错啦！\n正确答案是: $correctText"
+            tvFeedback.text = if (q.tip != null) "$base\n💡 ${q.tip}" else base
             tvFeedback.setTextColor(android.graphics.Color.parseColor("#FF5252"))
-            handler.postDelayed({ currentIndex++; saveState(); showCurrentQuestion() }, 3000)
+            // 有讲解时多停留，让她读完
+            handler.postDelayed({ currentIndex++; saveState(); showCurrentQuestion() }, if (q.tip != null) 4500L else 3000L)
         }
     }
 
@@ -350,8 +432,12 @@ class FloatingService : Service() {
         
         val totalQuestions = currentQuestions.size
         val score = if(totalQuestions > 0) Math.round(correctCount * (100f / totalQuestions)) else 0
-        val required = ceil(totalQuestions * 0.6).toInt(); val passed = correctCount >= required
-        
+        // 连续两次没通关就临时放宽到 50%，避免彻底卡死、哭鼻子（⑤ 降焦虑）
+        val failCount = QuestionBank.getQuizFailCount(this)
+        val passRatio = if (failCount >= 2) 0.5 else 0.6
+        val required = ceil(totalQuestions * passRatio).toInt(); val passed = correctCount >= required
+        QuestionBank.setQuizFailCount(this, if (passed) 0 else failCount + 1)
+
         var minutes = 0
         if (passed) {
             val maxMinutes = 40; val minMinutes = 27
@@ -362,18 +448,22 @@ class FloatingService : Service() {
             
             val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
             if (hour >= 22 || hour < 7) {
-                minutes = maxOf(1, minutes / 10)
+                minutes = maxOf(5, minutes / 3)   // 夜间时长收窄但不至于太挫败（⑤ 降焦虑）
             }
 
             QuestionBank.recordUnlockEvent(this, minutes)
             QuestionBank.markFirstQuizDoneToday(this)
 
-            tvResultTitle.text = "挑战成功！🌟"; tvResultTitle.setTextColor(android.graphics.Color.WHITE)
-            tvResultDesc.text = "得分: $score\n奖励解锁时间: $minutes 分钟"
+            val (streak, stars) = QuestionBank.recordPass(this)
+            tvResultTitle.text = passTitles.random(); tvResultTitle.setTextColor(android.graphics.Color.WHITE)
+            tvResultDesc.text = "得分: $score　⭐ x$stars\n🔥 连续学习 $streak 天\n奖励解锁: $minutes 分钟"
             btnRetry.visibility = View.GONE; handler.postDelayed({ unlockScreen(minutes * 60 * 1000L) }, 2500)
         } else {
             tvResultTitle.text = "再接再厉哦！"; tvResultTitle.setTextColor(android.graphics.Color.WHITE)
-            tvResultDesc.text = "得分: $score\n至少需要答对 $required 题 (60分)"
+            // 正向化措辞：先肯定答对的，再说差几题（②的轻量版，正式版下一轮做）
+            val gap = (required - correctCount).coerceAtLeast(1)
+            val eased = if (passRatio < 0.6) "\n（这次门槛已放低，加油就能过）" else ""
+            tvResultDesc.text = "已经答对 $correctCount 题啦！再对 $gap 题就能通关 💪$eased"
             btnRetry.visibility = View.VISIBLE
         }
         reportToDingTalk(score, passed, correctCount, totalQuestions, minutes, wrongQuestionsList)
@@ -381,8 +471,10 @@ class FloatingService : Service() {
 
     private fun reportToDingTalk(score: Int, passed: Boolean, correct: Int, total: Int, minutes: Int, wrongs: List<String>) {
         val timeText = if(passed) "\n- **奖励时长:** $minutes 分钟" else ""
+        val weak = QuestionBank.getWeakPointsText(this)
+        val weakText = if (weak != null) "\n- **近期易错（建议辅导）:** $weak" else ""
         val wrongsText = if (wrongs.isNotEmpty()) "\n\n**错题本:**\n- " + wrongs.joinToString("\n- ") else ""
-        val content = "#### 小欣学习打卡\n\n- **得分:** $score\n- **正确率:** $correct / $total\n- **结果:** ${if(passed) "✅ 通过" else "❌ 未通过"}$timeText$wrongsText"
+        val content = "#### 小欣学习打卡\n\n- **得分:** $score\n- **正确率:** $correct / $total\n- **结果:** ${if(passed) "✅ 通过" else "❌ 未通过"}$timeText$weakText$wrongsText"
         thread {
             reportToDingTalkRaw(content)
         }
@@ -391,7 +483,10 @@ class FloatingService : Service() {
     private fun showLockScreen() {
         countDownTimer?.cancel(); lockContainer.visibility = View.VISIBLE; resultContainer.visibility = View.GONE; timerContainer.visibility = View.GONE
         setImmersive(true)
-        
+        // 锁屏期间勤轮询飞书指令 + 展示未读家长消息
+        handler.removeCallbacks(feishuPoll); handler.post(feishuPoll)
+        consumePendingParentMsg()
+
         // Update flags to intercept touches (Remove NOT_FOCUSABLE)
         params.flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
         updateParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, 0, 0)
@@ -404,6 +499,8 @@ class FloatingService : Service() {
     }
 
     private fun unlockScreen(ms: Long) {
+        handler.removeCallbacks(feishuPoll)   // 解锁/暂停期间停止勤轮询（由 15min 周期闹钟兜底）
+        tvParentMsg.visibility = View.GONE; quickReplyRow.visibility = View.GONE
         lockContainer.visibility = View.GONE; resultContainer.visibility = View.GONE; timerContainer.visibility = View.VISIBLE
         setImmersive(false); val size = (60 * resources.displayMetrics.density).toInt()
         
@@ -457,6 +554,53 @@ class FloatingService : Service() {
             }
         })
     }
+
+    // ===== 飞书远程指令 =====
+    private fun applyRemoteCommand(text: String) {
+        when (val c = FeishuClient.parseCommand(text)) {
+            is FeishuClient.Command.UnlockNow -> {
+                thread { FeishuClient.sendText("✅ 已远程解锁 ${c.minutes} 分钟") }
+                getSharedPreferences(PREFS_STATE, Context.MODE_PRIVATE).edit().clear().apply()
+                unlockScreen(c.minutes * 60 * 1000L)
+            }
+            is FeishuClient.Command.LockNow -> {
+                setPauseUntil(0L)
+                if (lockContainer.visibility != View.VISIBLE) startQuiz()
+            }
+            is FeishuClient.Command.PauseLock -> {
+                setPauseUntil(System.currentTimeMillis() + c.minutes * 60 * 1000L)
+                thread { FeishuClient.sendText("✅ 已暂停锁屏 ${c.minutes} 分钟") }
+                unlockScreen(c.minutes * 60 * 1000L)
+            }
+            is FeishuClient.Command.MessageToChild -> showParentMessage(c.text)
+        }
+    }
+
+    private fun showParentMessage(text: String) {
+        tvParentMsg.text = "妈妈说：$text"
+        tvParentMsg.visibility = View.VISIBLE
+        quickReplyRow.visibility = View.VISIBLE
+    }
+
+    private fun sendQuickReply(label: String) {
+        thread { FeishuClient.sendText("小欣：$label") }
+        tvParentMsg.visibility = View.GONE; quickReplyRow.visibility = View.GONE
+    }
+
+    private fun consumePendingParentMsg() {
+        val p = getSharedPreferences(FeishuClient.PREFS, Context.MODE_PRIVATE)
+        val msg = p.getString(FeishuClient.KEY_PENDING_MSG, null)
+        if (!msg.isNullOrBlank()) {
+            showParentMessage(msg)
+            p.edit().remove(FeishuClient.KEY_PENDING_MSG).apply()
+        }
+    }
+
+    private fun getPauseUntil(): Long =
+        getSharedPreferences(FeishuClient.PREFS, Context.MODE_PRIVATE).getLong(FeishuClient.KEY_PAUSE_UNTIL, 0L)
+
+    private fun setPauseUntil(t: Long) =
+        getSharedPreferences(FeishuClient.PREFS, Context.MODE_PRIVATE).edit().putLong(FeishuClient.KEY_PAUSE_UNTIL, t).apply()
 
     override fun onTaskRemoved(ri: Intent?) { super.onTaskRemoved(ri); scheduleRestart() }
     override fun onDestroy() {
