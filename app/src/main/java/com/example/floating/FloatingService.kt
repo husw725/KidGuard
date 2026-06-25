@@ -187,6 +187,8 @@ class FloatingService : Service() {
         restoreOrStartQuiz()
         ReportScheduler.scheduleDailyReport(this)
         ReportScheduler.scheduleFeishuPoll(this)   // 未锁屏时也轮询飞书指令
+        val ctx = applicationContext
+        thread { FeishuClient.sendHelpOnce(ctx) }   // 首次连通发一条指令帮助到群
     }
 
     // 单词 -> res/raw 资源 id（小写、空格转下划线）；找不到返回 0

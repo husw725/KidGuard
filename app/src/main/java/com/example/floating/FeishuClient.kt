@@ -23,6 +23,22 @@ object FeishuClient {
     const val KEY_LAST_TS = "lastMsgTs"        // 已处理消息的最大 create_time(ms)
     const val KEY_PAUSE_UNTIL = "pauseUntil"   // 暂停锁屏到此时间(ms)
     const val KEY_PENDING_MSG = "pendingMsg"   // 未锁屏时收到的家长消息，下次锁屏展示
+    const val KEY_HELP_SENT = "helpSent"       // 帮助消息只发一次
+
+    private const val HELP_TEXT =
+        "🤖 小欣管家·遥控指令（直接在本群发文字即可）：\n" +
+        "• 解锁30 — 立即解锁 30 分钟（不带数字默认 30，上限 240）\n" +
+        "• 锁定 — 立即出题锁屏\n" +
+        "• 停用60 — 60 分钟内不锁，给自由时间（默认 60）\n" +
+        "• 其它任意话（如“宝贝加油”）— 显示给小欣看，她可一键回复\n" +
+        "⏱ 生效：她锁屏时约 45 秒；没锁屏时最长约 15 分钟。"
+
+    // 首次连通时发一条帮助消息（成功才置标志，失败下次再试），只发一次
+    fun sendHelpOnce(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_HELP_SENT, false)) return
+        if (sendText(HELP_TEXT)) prefs.edit().putBoolean(KEY_HELP_SENT, true).apply()
+    }
 
     private var token: String = ""
     private var tokenExpireAt: Long = 0L
