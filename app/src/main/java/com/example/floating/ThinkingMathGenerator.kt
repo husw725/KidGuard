@@ -9,7 +9,7 @@ import kotlin.random.Random
 object ThinkingMathGenerator {
 
     fun generate(): Question {
-        val type = Random.nextInt(12)
+        val type = Random.nextInt(18)
         val q = when (type) {
             0 -> generateTreePlanting()
             1 -> generateSawLog()
@@ -23,6 +23,12 @@ object ThinkingMathGenerator {
             9 -> generateReverseProblem()
             10 -> generateCircleProblem()
             11 -> generateStairsProblem()
+            12 -> generateAllotSameRemainder()
+            13 -> generateMeterReading()
+            14 -> generateLogicDeduction()
+            15 -> generateEquivalentExchange()
+            16 -> generateHandshake()
+            17 -> generateCountFigures()
             else -> generateAgeDifference()
         }
         return q.copy(tip = q.tip ?: tips[typeNames[type]])
@@ -30,7 +36,8 @@ object ThinkingMathGenerator {
     // 加权版本：很久没出现的题型权重更高，答错过的题型优先
     var lastGeneratedType: String = ""
     private val typeNames = listOf("treePlanting","sawLog","ageProblem","queueProblem","ropeProblem",
-        "numberPattern","sumMultiple","chickenRabbit","matchstick","reverseProblem","circleProblem","stairsProblem")
+        "numberPattern","sumMultiple","chickenRabbit","matchstick","reverseProblem","circleProblem","stairsProblem",
+        "allotSameRemainder","meterReading","logicDeduction","equivalentExchange","handshake","countFigures")
 
     // 各题型答错时的一句话解题思路（点中误区）
     private val tips = mapOf(
@@ -45,7 +52,13 @@ object ThinkingMathGenerator {
         "matchstick" to "第一个用几根，每多一个再加固定的几根",
         "reverseProblem" to "倒推法：从最后的结果一步步往回算",
         "circleProblem" to "围成一圈时，间隔数 = 人数（首尾相连）",
-        "stairsProblem" to "从 1 楼到 n 楼，其实只走了 (n−1) 层"
+        "stairsProblem" to "从 1 楼到 n 楼，其实只走了 (n−1) 层",
+        "allotSameRemainder" to "余数相同：先求两个人数的最小公倍数，再加上余数",
+        "meterReading" to "先算这个月用了多少度，再加上月读数，就是这个月的读数",
+        "logicDeduction" to "把条件一条条排除，剩下的就是答案",
+        "equivalentExchange" to "一步步换：先换成中间的东西，再换成要求的",
+        "handshake" to "每人和其他人各一次，但每次握手数了两遍，要除以 2",
+        "countFigures" to "按起点一个一个数，别漏别重：从每个点往后数"
     )
 
     fun generateWeighted(seenRound: Map<String, Int>, errors: Map<String, Int>): Question {
@@ -82,6 +95,12 @@ object ThinkingMathGenerator {
             9 -> generateReverseProblem()
             10 -> generateCircleProblem()
             11 -> generateStairsProblem()
+            12 -> generateAllotSameRemainder()
+            13 -> generateMeterReading()
+            14 -> generateLogicDeduction()
+            15 -> generateEquivalentExchange()
+            16 -> generateHandshake()
+            17 -> generateCountFigures()
             else -> generateAgeDifference()
         }
         return q.copy(tip = q.tip ?: tips[typeNames[idx]])
@@ -624,6 +643,106 @@ object ThinkingMathGenerator {
             wrongs.map { "$it" }
         )
     }
+
+    // ============ ⑬ 相同余数分配题（最小公倍数）============
+    /** 分给 a 人余 r、分给 b 人也余 r → 满足的数 = a,b 的公倍数 + r；最少 = LCM(a,b)+r */
+    private fun generateAllotSameRemainder(): Question {
+        val pairs = listOf(3 to 4, 4 to 6, 2 to 3, 3 to 5, 4 to 5, 2 to 5)
+        val (a, b) = pairs.random()
+        val r = Random.nextInt(1, minOf(a, b))
+        val lcm = a / gcd(a, b) * b
+        return if (Random.nextBoolean()) {
+            val ans = lcm + r
+            val wrongs = listOf(lcm, lcm + r + a, lcm * 2 + r, r, lcm - r, ans + b)
+                .filter { it > 0 && it != ans }.distinct().take(3)
+            createQuestion("一些糖果，平均分给 $a 个小朋友余 $r 个，平均分给 $b 个小朋友也余 $r 个。这些糖果最少有多少个？", "$ans", wrongs.map { "$it" })
+        } else {
+            val k = Random.nextInt(1, 3); val ans = lcm * k + r
+            val wrongs = listOf(ans + 1, ans - 1, ans + a, ans + b, lcm * k, ans + lcm + 1, ans + 2)
+                .filter { it > 0 && it != ans && !(it % a == r && it % b == r) }.distinct().take(3)
+            createQuestion("下面哪个数，平均分给 $a 人和平均分给 $b 人都正好余 $r 个？", "$ans", wrongs.map { "$it" })
+        }
+    }
+
+    // ============ ⑭ 电表/水表看不清数字 ============
+    /** 给上月读数 R、上月用量 U、这月比上月多用/少用 d → 这月读数 = R + (U±d)，其中一位看不清，求那位 */
+    private fun generateMeterReading(): Question {
+        val r = Random.nextInt(12, 95) * 10          // 上月读数（整十，3 位左右）
+        val u = Random.nextInt(3, 12) * 10           // 上月用量（整十）
+        var more = Random.nextBoolean()
+        val d = Random.nextInt(1, 5) * 10            // 差额（整十）
+        if (!more && u - d < 10) more = true         // 保证这月用量为正
+        val thisUse = if (more) u + d else u - d
+        val thisReading = r + thisUse
+        val s = thisReading.toString()
+        val pos = if (s.length >= 3) Random.nextInt(1, s.length - 1) else 1  // 取中间位
+        val ansDigit = s[pos].toString()
+        val shown = s.substring(0, pos) + "□" + s.substring(pos + 1)
+        val word = if (more) "多用了" else "少用了"
+        val wrongs = (0..9).map { "$it" }.filter { it != ansDigit }.shuffled().take(3)
+        return createQuestion(
+            "小欣家上月电表读数是 $r 度，上个月用了 $u 度电。这个月比上个月$word $d 度，这个月电表读数是 $shown 度（□ 处看不清）。□ 是几？",
+            ansDigit, wrongs)
+    }
+
+    // ============ ⑮ 逻辑推理 ============
+    private fun generateLogicDeduction(): Question {
+        val names = listOf("小欣", "小明", "小红", "小华", "小丽", "小杰")
+        return if (Random.nextBoolean()) {
+            // 排序比较：x > y > z
+            val (x, y, z) = names.shuffled().take(3)
+            val rel = listOf(Triple("高", "矮", "个子"), Triple("大", "小", "年纪"), Triple("快", "慢", "跑步")).random()
+            val passage = "${x}比${y}${rel.first}，${y}比${z}${rel.first}。"
+            if (Random.nextBoolean()) createQuestion("$passage\n\n问题：谁最${rel.second}？", z, listOf(x, y))
+            else createQuestion("$passage\n\n问题：谁最${rel.first}？", x, listOf(y, z))
+        } else {
+            // 身份排除
+            val people = names.shuffled().take(3)
+            val acts = listOf("钢琴", "画画", "跳舞", "下棋", "游泳").shuffled().take(3)
+            val ti = Random.nextInt(3)  // 目标人
+            val target = people[ti]; val targetAct = acts[ti]
+            val others = acts.filterIndexed { i, _ -> i != ti }
+            val passage = "${people[0]}、${people[1]}、${people[2]}三人，分别喜欢${acts[0]}、${acts[1]}、${acts[2]}（每人不一样）。${target}不喜欢${others[0]}，也不喜欢${others[1]}。"
+            createQuestion("$passage\n\n问题：${target}喜欢什么？", targetAct, others)
+        }
+    }
+
+    // ============ ⑯ 等量代换 ============
+    private fun generateEquivalentExchange(): Question {
+        val fruits = listOf("🍉", "🍎", "🍓", "🍌", "🍐").shuffled()
+        val (big, mid, small) = Triple(fruits[0], fruits[1], fruits[2])
+        val a = Random.nextInt(2, 5); val b = Random.nextInt(2, 5)
+        val ans = a * b
+        val wrongs = listOf(a + b, ans + 1, ans - 1, a * b + a).filter { it > 0 && it != ans }.distinct().take(3)
+        return createQuestion("1 个 $big = $a 个 $mid，1 个 $mid = $b 个 $small。\n\n问题：1 个 $big = 几个 $small？", "$ans", wrongs.map { "$it" })
+    }
+
+    // ============ ⑰ 握手 / 比赛场次 ============
+    private fun generateHandshake(): Question {
+        val n = Random.nextInt(3, 7)
+        val ans = n * (n - 1) / 2
+        val wrongs = listOf(n * (n - 1), n, n - 1, ans + 1).filter { it > 0 && it != ans }.distinct().take(3)
+        return if (Random.nextBoolean())
+            createQuestion("$n 个小朋友，每两个人握一次手，一共要握几次手？", "$ans", wrongs.map { "$it" })
+        else
+            createQuestion("$n 个球队进行单循环比赛（每两队都要比一场），一共要比几场？", "$ans", wrongs.map { "$it" })
+    }
+
+    // ============ ⑱ 数图形 / 数线段 ============
+    private fun generateCountFigures(): Question {
+        val n = Random.nextInt(3, 7)
+        return if (Random.nextBoolean()) {
+            val ans = n * (n - 1) / 2
+            val wrongs = listOf(n - 1, n, n * (n - 1), ans + 1).filter { it > 0 && it != ans }.distinct().take(3)
+            createQuestion("一条直线上有 $n 个点，这些点之间一共能数出几条线段？", "$ans", wrongs.map { "$it" })
+        } else {
+            val ans = n * (n + 1) / 2
+            val wrongs = listOf(n, n + 1, n * n, ans + 1).filter { it > 0 && it != ans }.distinct().take(3)
+            createQuestion("把一个长方形平均分成一排 $n 个小格子，图中一共能数出几个长方形？", "$ans", wrongs.map { "$it" })
+        }
+    }
+
+    private fun gcd(x: Int, y: Int): Int = if (y == 0) x else gcd(y, x % y)
 
     // ============ 公共方法 ============
     private fun createQuestion(text: String, correct: String, wrongs: List<String>): Question {

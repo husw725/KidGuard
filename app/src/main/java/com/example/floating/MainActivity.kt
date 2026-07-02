@@ -13,7 +13,6 @@ import android.provider.Settings
 import android.text.TextUtils
 import android.widget.Button
 import android.widget.EditText
-import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 
@@ -21,7 +20,6 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var devicePolicyManager: DevicePolicyManager
     private lateinit var componentName: ComponentName
-    private lateinit var tvVersionStatus: TextView
     private val CLOUD_URL = "https://gitee.com/husw725/codes/i3hokdrwm7el20xsnab5u13/raw?blob_name=gistfile1.txt"
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -30,10 +28,8 @@ class MainActivity : AppCompatActivity() {
 
         devicePolicyManager = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
         componentName = ComponentName(this, MyAdminReceiver::class.java)
-        tvVersionStatus = findViewById(R.id.tv_version_status)
 
         setupConfigView()
-        updateVersionText()
 
         findViewById<Button>(R.id.btn_start_floating).setOnClickListener {
             checkPermissionsAndStart()
@@ -61,7 +57,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.btn_send_now).setOnClickListener {
-            val report = QuestionBank.getRawDailyReport(this)
+            val report = QuestionBank.getDailyReport(this)
             Toast.makeText(this, "正在尝试发送实时报表...", Toast.LENGTH_SHORT).show()
             if (report != null) {
                 Thread {
@@ -80,22 +76,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateVersionText() {
-        val currentVersion = QuestionBank.getCloudVersion(this)
-        tvVersionStatus.text = "当前本地题库版本: v$currentVersion"
-    }
-
     private fun setupConfigView() {
         val etTotalQuestions = findViewById<EditText>(R.id.et_total_questions)
         etTotalQuestions.setText(QuestionBank.getTotalQuestionConfig(this).toString())
 
         findViewById<Button>(R.id.btn_save_config).setOnClickListener {
             val inputCount = etTotalQuestions.text.toString().toIntOrNull()
-            if (inputCount != null && inputCount >= 10) {
+            if (inputCount != null && inputCount >= 20) {
                 QuestionBank.setTotalQuestionConfig(this, inputCount)
                 Toast.makeText(this, "设置已保存：每次 $inputCount 题", Toast.LENGTH_SHORT).show()
             } else {
-                Toast.makeText(this, "请输入大于等于10的数字", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "请输入大于等于20的数字", Toast.LENGTH_SHORT).show()
             }
         }
     }

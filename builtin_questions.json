@@ -2,9 +2,9 @@
   "version": 2,
   "questions": [
     {
-      "text": "下列哪个字是左右结构？",
-      "options": ["国", "森", "林", "苗"],
-      "correctIndex": 2
+      "text": "古诗“停车坐爱枫林晚”中“坐”的意思是？",
+      "options": ["因为", "坐下", "座位", "于是"],
+      "correctIndex": 0
     },
     {
       "text": "选词填空：()颜()色",
@@ -17,8 +17,8 @@
       "correctIndex": 0
     },
     {
-      "text": "找出反义词：快 —— ()",
-      "options": ["慢", "高", "远", "长"],
+      "text": "《富饶的西沙群岛》主要写了西沙群岛的什么？",
+      "options": ["物产丰富、风景优美", "人很多", "天气炎热", "交通方便"],
       "correctIndex": 0
     },
     {
@@ -27,9 +27,9 @@
       "correctIndex": 2
     },
     {
-      "text": "下列哪个是前鼻音韵母？",
-      "options": ["ang", "eng", "an", "ong"],
-      "correctIndex": 2
+      "text": "“忽然”的近义词是？",
+      "options": ["突然", "慢慢", "渐渐", "果然"],
+      "correctIndex": 0
     },
     {
       "text": "“十年树木，”下一句是？",

@@ -86,8 +86,14 @@ object QuestionBank {
     private const val KEY_LAST_REPORT_TIME = "LastReportTime"
     private const val KEY_DAILY_UNLOCK_COUNT = "DailyUnlockCount"
     private const val KEY_DAILY_UNLOCK_MINUTES = "DailyUnlockMinutes"
-    private const val KEY_DAILY_DATA_TIMESTAMP = "DailyDataTimestamp"
-    private const val KEY_LAST_QUIZ_DATE = "LastQuizDate"
+    // 注意：旧版把 "DailyDataTimestamp" 存成 Long（毫秒），getInt 会 ClassCastException。
+    // 这里换一个全新的 Int 键存今天的 dayKey，绕开旧残留值。
+    private const val KEY_DAILY_DATA_TIMESTAMP = "DailyDayKeyInt"
+    private const val KEY_DAILY_ANSWERED = "DailyAnswered"
+    private const val KEY_DAILY_CORRECT = "DailyCorrect"
+    private const val KEY_DAILY_UNLOCK_LIMIT = "DailyUnlockLimit"  // 每日可解锁次数上限（默认 3，可远程改）
+    private const val KEY_DAILY_BONUS = "DailyBonusUnlock"         // 今日临时奖励次数（远程“加一次”，按天清零）
+    private const val KEY_LAST_VERSION = "LastAppVersion"          // 上次运行的 App 版本号（更新后清零今日次数）
     private const val KEY_TOTAL_QUESTIONS = "TotalQuestions"
     private const val KEY_LAST_SEEN_ROUND = "LastSeenRound"
     private const val KEY_MATH_TYPE_SEEN = "MathTypeSeen"
@@ -234,8 +240,81 @@ object QuestionBank {
         } catch (e: Exception) {}
     }
 
-    // 阅读理解（全部参数化：姓名/数量/颜色/顺序/地点/天气每次随机，答案随之变化，无法死记，只能真读）
+    // 阅读理解：按难度档混出 —— 基础档以「照抄型」缓冲为主，进阶/挑战档以三年级推理题为主
     private fun generateReadingQuestion(): Question {
+        val hardChance = when (currentDifficulty) { 1 -> 20; 3 -> 90; else -> 70 }
+        return if (Random.nextInt(100) < hardChance) generateHardReading() else generateEasyReading()
+    }
+
+    // 三年级阅读：读完再算 / 代词指代 / 因果原因 / 词语理解+概括
+    private fun generateHardReading(): Question {
+        val names = listOf("小欣", "小明", "小红", "小华", "小丽", "小杰")
+        return when (Random.nextInt(4)) {
+            // A 读完再算（多步，口算友好）
+            0 -> {
+                val name = names.random()
+                if (Random.nextBoolean()) {
+                    val item = listOf("个苹果", "块糖", "张贴纸", "本练习册").random()
+                    val a = Random.nextInt(12, 21); val b = Random.nextInt(2, 6); val c = Random.nextInt(2, 6)
+                    createMathQ("${name}有 $a $item，先送给同桌 $b ，又用掉 $c 。\n\n问题：${name}现在还剩几$item？", a - b - c, "从总数里把送掉和用掉的都减去")
+                } else {
+                    val a = Random.nextInt(12, 31); val b = Random.nextInt(2, 9)
+                    createMathQ("图书角有故事书 $a 本，科技书比故事书少 $b 本。\n\n问题：两种书一共有多少本？", a + (a - b), "先算出科技书有几本，再和故事书相加")
+                }
+            }
+            // B 代词指代
+            1 -> {
+                if (Random.nextBoolean()) {
+                    val animal = listOf("小鸟", "小猫", "小松鼠", "蝴蝶").random()
+                    val place = listOf("树上", "屋檐下", "花丛里", "草地上").random()
+                    createQuestion("$place 有一只$animal，它正在快活地玩耍。\n\n问题：句中的“它”指的是什么？", animal, listOf("树", "花", "屋檐").shuffled().take(3))
+                } else {
+                    val name = names.random()
+                    val flower = listOf("一朵花", "一只蝴蝶", "一道彩虹").random()
+                    val others = names.filter { it != name }.shuffled().take(2)
+                    createQuestion("${name}看见路边有$flower，被深深吸引，停下来看了好久。\n\n问题：句中“被深深吸引”的是谁？", name, others + flower)
+                }
+            }
+            // C 因果原因
+            2 -> {
+                val cases = listOf(
+                    Triple("昨天下了一场大雪", "学校的运动会改到了下周", "运动会"),
+                    Triple("小明发烧生病了", "今天没来上学", "小明今天"),
+                    Triple("天气太热", "小狗躲到了大树的阴影下", "小狗"),
+                    Triple("路上堵车了", "爸爸回家晚了半小时", "爸爸")
+                )
+                val p = cases.random()
+                val wrongs = cases.filter { it.first != p.first }.map { "因为${it.first}" }.shuffled().take(3)
+                createQuestion("因为${p.first}，所以${p.second}。\n\n问题：${p.third}为什么会这样？", "因为${p.first}", wrongs)
+            }
+            // D 词语理解 / 概括（随机二选一）
+            else -> {
+                if (Random.nextBoolean()) {
+                    val words = listOf(
+                        Triple("操场上鸦雀无声，同学们都在认真听讲", "鸦雀无声", "非常安静"),
+                        Triple("听到放假的消息，大家兴高采烈", "兴高采烈", "非常高兴"),
+                        Triple("他飞快地跑回了家", "飞快", "非常快"),
+                        Triple("小红做作业很仔细，一个错都没有", "仔细", "认真细心")
+                    )
+                    val p = words.random()
+                    val pool = listOf("非常安静", "非常高兴", "非常快", "认真细心", "非常生气", "非常难过")
+                    val wrongs = pool.filter { it != p.third }.shuffled().take(3)
+                    createQuestion("${p.first}。\n\n问题：“${p.second}”的意思是？", p.third, wrongs)
+                } else {
+                    val topics = listOf(
+                        Triple("春天来了，小草绿了，桃花开了，燕子也从南方飞回来了。", "春天的景象", listOf("夏天很炎热", "秋天落叶了", "冬天下雪了")),
+                        Triple("妈妈每天早起做饭，送我上学，晚上还陪我读书写字。", "妈妈很辛苦地照顾我", listOf("我很爱学习", "爸爸去上班了", "我会自己做饭")),
+                        Triple("蜜蜂飞到花丛中采蜜，从早忙到晚，一刻也不停。", "蜜蜂很勤劳", listOf("花儿很漂亮", "蜜蜂在睡觉", "天气很好"))
+                    )
+                    val p = topics.random()
+                    createQuestion("${p.first}\n\n问题：这段话主要写的是什么？", p.second, p.third)
+                }
+            }
+        }
+    }
+
+    // 照抄型阅读（一二年级，作基础档缓冲）：姓名/数量/颜色/顺序/地点/天气每次随机
+    private fun generateEasyReading(): Question {
         val names = listOf("小欣", "小明", "小红", "小华", "小丽", "小杰")
         return when (Random.nextInt(6)) {
             // ① 采果子——读数量
@@ -453,8 +532,6 @@ object QuestionBank {
         "adv_combination", "adv_digit_puzzle", "adv_statistics", "adv_observe_3d",
         "adv_simple_equation", "adv_remainder_app"
     )
-    var lastGeneratedOldMathType: String = ""
-
     fun getRandomQuestions(context: Context, count: Int): List<Question> {
         loadLocalData(context)
         loadDifficulty(context)
@@ -677,24 +754,56 @@ object QuestionBank {
         20 -> { val yuan = Random.nextInt(1, 10); val jiao = listOf(5, 10, 50).random(); val total_jiao = yuan * 10 + jiao; createQuestion("$yuan 元 $jiao 角 = ( ) 角", "$total_jiao", listOf("${yuan * 10}", "${total_jiao + 5}", "${total_jiao - 10}")) }
         21 -> { val n = Random.nextInt(2, 4); val total = n * (n - 1); val digitList = (1..n).joinToString("、"); createQuestion("用 $digitList 这${n}个数字可以组成 ( ) 个没有重复数字的两位数。", "$total", listOf("${total - 1}", "${total + 1}", "${total + 2}")) }
         22 -> { val total = Random.nextInt(20, 80); val b = Random.nextInt(5, total - 4); val a = total - b; createMathQ("（ ）+ $b = $total，括号里应该填几？", a) }
-        23 -> { val a = Random.nextInt(8, 15); val b_val = a + Random.nextInt(1, 5); val c_val = b_val + Random.nextInt(1, 5); createQuestion("小明跳了 $a 下，小红比小明多跳 3 下，小兰比小红多跳 2 下，小兰跳了 ( ) 下。", "${a + 5}", listOf("${a + 3}", "${a + 2}", "${a + 4}")) }
+        23 -> { val a = Random.nextInt(8, 15); createQuestion("小明跳了 $a 下，小红比小明多跳 3 下，小兰比小红多跳 2 下，小兰跳了 ( ) 下。", "${a + 5}", listOf("${a + 3}", "${a + 2}", "${a + 4}")) }
         24 -> { val shapes = listOf(Triple("正方体", "6", listOf("4", "5", "8")), Triple("长方体", "6", listOf("4", "5", "8")), Triple("圆柱", "3", listOf("2", "4", "6"))); val s = shapes.random(); createQuestion("${s.first}有几个面？", s.second, s.third) }
         25 -> { val x = Random.nextInt(5, 20); val add = Random.nextInt(10, 30); val total = x + add; createQuestion("一个数加上 $add 等于 $total，这个数是 ( )", "$x", listOf("${x + 1}", "${x + 2}", "${x - 1}")) }
         26 -> { val total_apples = Random.nextInt(10, 30); val kids = Random.nextInt(3, 7); val quotient = total_apples / kids; val rem = total_apples % kids; createQuestion("$total_apples 个苹果平均分给 $kids 个小朋友，每人 ${quotient} 个，还剩 ( ) 个。", "$rem", listOf("${if (rem > 0) rem - 1 else 1}", "${rem + 1}", "${rem + 2}")) }
         else -> { val n = Random.nextInt(3, 5); val son = if (n == 3) Random.nextInt(10, 13) else Random.nextInt(7, 11); val dad = son * n; createMathQ("今年爸爸 $dad 岁，小欣 $son 岁，爸爸的年龄是小欣的多少倍？", n) }
         }
         val typeName = if (idx < 27) "old-" + advancedTypeNames[idx] else "old-" + advancedTypeNames[26]
-        lastGeneratedOldMathType = typeName
         return Pair(q, typeName)
     }
 
-    private fun generateVerbalLogicQuestion(): Question = when (Random.nextInt(6)) {
+    private fun generateVerbalLogicQuestion(): Question = when (Random.nextInt(10)) {
         0 -> { val categories = listOf(listOf("苹果", "香蕉", "西瓜", "青菜"), listOf("老虎", "狮子", "灰狼", "菊花"), listOf("铅笔", "书包", "尺子", "雨鞋"), listOf("燕子", "喜鹊", "大雁", "松鼠"), listOf("白云", "星星", "太阳", "操场"), listOf("跳高", "跑步", "打球", "读书")); val cat = categories.random(); createQuestion("找出不是同一类的词：", cat.last(), cat.dropLast(1)) }
         1 -> { val items = listOf(Triple("日", "月", "明"), Triple("女", "马", "妈"), Triple("人", "木", "休"), Triple("口", "十", "叶"), Triple("门", "口", "问"), Triple("木", "木", "林"), Triple("小", "大", "尖"), Triple("口", "天", "吴"), Triple("立", "占", "站"), Triple("讠", "也", "说")); val item = items.random(); val allWrongs = "好男认写字校学们位明".map { it.toString() }.filter { it != item.third }; createQuestion("${item.first} + ${item.second} = ( )", item.third, allWrongs.shuffled().take(3)) }
         2 -> { val m = listOf("一( )画" to "幅", "一( )马" to "匹", "一( )雷声" to "声", "一( )小路" to "条").random(); createQuestion(m.first, m.second, listOf("个", "只", "片")) }
         3 -> { val r = listOf("“春天像个害羞的小姑娘”是( )句" to "比喻", "“小树在风中点头”是( )句" to "拟人").random(); createQuestion(r.first, r.second, listOf("夸张", "排比", "反问").filter { it != r.second }) }
         4 -> { val c = listOf("端午节吃( )" to "粽子", "元宵节吃( )" to "元宵", "春节是( )的开始" to "一年").random(); createQuestion(c.first, c.second, listOf("月饼", "饺子", "春分")) }
-        else -> { val y = listOf("《亡羊补牢》告诉我们要( )" to "及时改正错误", "《揠苗助长》告诉我们不能( )" to "急于求成").random(); createQuestion(y.first, y.second, listOf("努力学习", "尊敬师长", "勤俭节约").filter { it != y.second }) }
+        5 -> { val y = listOf("《亡羊补牢》告诉我们要( )" to "及时改正错误", "《揠苗助长》告诉我们不能( )" to "急于求成").random(); createQuestion(y.first, y.second, listOf("努力学习", "尊敬师长", "勤俭节约").filter { it != y.second }) }
+        // 字谜
+        6 -> { val z = listOf(
+            Triple("一口咬掉牛尾巴（打一字）", "告", listOf("生", "失", "年")),
+            Triple("二人坐在土堆上（打一字）", "坐", listOf("丛", "尘", "坎")),
+            Triple("山上还有山（打一字）", "出", listOf("岳", "峰", "岭")),
+            Triple("门里站着一个人（打一字）", "闪", listOf("间", "闭", "问")),
+            Triple("三人同日来，喜见百花开（打一字）", "春", listOf("夏", "秦", "奉")),
+            Triple("十张口（打一字）", "古", listOf("叶", "田", "回"))
+        ).random(); createQuestion(z.first, z.second, z.third) }
+        // 词语类比
+        7 -> { val a = listOf(
+            listOf("医生", "医院", "老师", "学校", "学生", "教室", "黑板"),
+            listOf("司机", "汽车", "飞行员", "飞机", "机场", "天空", "翅膀"),
+            listOf("鱼", "水", "鸟", "天空", "树林", "翅膀", "笼子"),
+            listOf("笔", "写字", "刀", "切东西", "吃饭", "剪纸", "画画"),
+            listOf("太阳", "白天", "月亮", "夜晚", "星星", "灯光", "中午")
+        ).random(); createQuestion("${a[0]}对${a[1]}，就像${a[2]}对（ ）", a[3], a.subList(4, 7)) }
+        // 词语接龙
+        8 -> { val z = listOf(
+            Triple("开心", "心情", listOf("高兴", "难过", "快乐")),
+            Triple("学习", "习惯", listOf("读书", "作业", "老师")),
+            Triple("朋友", "友谊", listOf("同学", "伙伴", "好人")),
+            Triple("春天", "天空", listOf("夏天", "下雨", "花朵")),
+            Triple("白云", "云朵", listOf("蓝天", "下雨", "晴空"))
+        ).random(); createQuestion("词语接龙：${z.first} →（ ）？选出能接上的词", z.second, z.third) }
+        // 一词多义
+        else -> { val z = listOf(
+            listOf("夜深了，大家都睡了。", "深", "时间晚、久", "距离大", "颜色浓", "感情厚"),
+            listOf("我老去外婆家玩。", "老", "经常", "年纪大", "不新鲜", "排行最后"),
+            listOf("妈妈在打电话。", "打", "拨打、进行", "用手击", "买东西", "编织"),
+            listOf("买东西花了十元。", "花", "用掉、消费", "花朵", "花纹", "眼花"),
+            listOf("水管跑水了。", "跑", "漏出来", "奔跑", "逃走", "旅行")
+        ).random(); createQuestion("“${z[1]}”在“${z[0]}”中的意思是？", z[2], z.subList(3, 6)) }
     }
 
     private fun generateCompositionQuestion(): Question = when (Random.nextInt(11)) {
@@ -711,32 +820,108 @@ object QuestionBank {
         else -> { val q = listOf("要是你在野外迷了路，中午时太阳在 ( ) 边。" to "南", "北极星所在的方向是 ( ) 方。" to "北").random(); createQuestion(q.first, q.second, listOf("东", "西", "南", "北").filter { it != q.second }) }
     }
 
+    // 口算题：三年级中上，难度按 currentDifficulty 分档；乘除以表内为主（口诀还不熟），
+    // 难度主要靠加减的凑整范围拉；每道尽量是“有简便方法”的口算题，并带 tip 提示简便法。
     private fun generateGrade2Math(type: Int = -1): Pair<Question, String> {
         val idx = if (type >= 0) type else Random.nextInt(7)
+        val diff = currentDifficulty
         val q = when (idx) {
-        0 -> { val a = Random.nextInt(10, 90); val b = Random.nextInt(10, 90); if (Random.nextBoolean()) createMathQ("$a + $b = ?", a + b) else createMathQ("${maxOf(a, b)} - ${minOf(a, b)} = ?", maxOf(a, b) - minOf(a, b)) }
-        1 -> { val a = Random.nextInt(2, 10); val b = Random.nextInt(2, 10); createMathQ("$a × $b = ?", a * b) }
-        2 -> { val divisor = Random.nextInt(3, 9); val quotient = Random.nextInt(2, 8); val rem = Random.nextInt(1, divisor); createQuestion("${divisor * quotient + rem} ÷ $divisor = ?", "${quotient}余${rem}", listOf("${quotient}余${(rem+1)%divisor}", "${quotient+1}余${rem}", "${quotient-1}余${rem}")) }
-        3 -> { val items = listOf("一只鸡重2( )" to "千克", "一个苹果重200( )" to "克", "一袋盐重500( )" to "克", "一头牛重400( )" to "千克"); val item = items.random(); createQuestion(item.first, item.second, if (item.second == "克") listOf("千克", "米", "厘米") else listOf("克", "米", "厘米")) }
-        4 -> { val items = listOf("电风扇叶片转动" to "旋转", "升国旗" to "平移", "拨算盘珠子" to "平移", "推拉窗户" to "平移"); val item = items.random(); createQuestion("${item.first}属于( )现象", item.second, listOf("旋转", "平移", "轴对称").filter { it != item.second }) }
-        5 -> { val th = Random.nextInt(1, 10); val h = Random.nextInt(0, 10); val t = Random.nextInt(1, 10); val o = Random.nextInt(0, 10); val num = th * 1000 + h * 100 + t * 10 + o; createQuestion("$num 的百位是 ( )", "$h", listOf("${(h + 1) % 10}", "${(h + 2) % 10}", "${(h + 3) % 10}")) }
-        else -> { val a = Random.nextInt(2, 9); val b = Random.nextInt(2, 9); val c = Random.nextInt(2, 20); if (Random.nextBoolean()) createMathQ("$a × $b + $c = ?", a * b + c) else createMathQ("${maxOf(a*b, c)} - ${minOf(a*b, c)} = ?", Math.abs(a * b - c)) }
+        // 加减：基础档两位数；进阶/挑战档三位数，但有一个数接近整十整百 → 凑整法口算
+        0 -> {
+            if (diff <= 1) {
+                val a = Random.nextInt(10, 90); val b = Random.nextInt(10, 90)
+                if (Random.nextBoolean()) createMathQ("$a + $b = ?", a + b) else createMathQ("${maxOf(a, b)} - ${minOf(a, b)} = ?", maxOf(a, b) - minOf(a, b))
+            } else {
+                val m = if (diff >= 3) Random.nextInt(2, 9) else Random.nextInt(1, 4)  // 接近 m 个整百
+                val delta = Random.nextInt(1, 4)
+                val b = m * 100 - delta                                                // 如 98 / 197 / 296
+                if (Random.nextBoolean()) {
+                    val a = Random.nextInt(120, 1000 - m * 100)
+                    createMathQ("$a + $b = ?", a + b, "把 $b 看成 ${m * 100} 先加，再减 $delta")
+                } else {
+                    val a = Random.nextInt(b + 30, 1000)
+                    createMathQ("$a - $b = ?", a - b, "把 $b 看成 ${m * 100} 先减，再加回 $delta")
+                }
+            }
+        }
+        // 乘法：始终以表内为主；进阶/挑战偶尔“口诀×整十”（仍靠口诀）
+        1 -> {
+            val a = Random.nextInt(2, 10)
+            if (diff >= 2 && Random.nextInt(100) < 40) {
+                val k = Random.nextInt(2, 10); val b = k * 10
+                createMathQ("$a × $b = ?", a * b, "先算 $a×$k=${a*k}，末尾添一个 0")
+            } else {
+                val b = Random.nextInt(2, 10); createMathQ("$a × $b = ?", a * b, "想一想 $a 的乘法口诀")
+            }
+        }
+        // 除法：以表内为主；进阶/挑战偶尔两位数÷一位数有余数（可拆成整十+零头）
+        2 -> {
+            if (diff >= 2 && Random.nextInt(100) < 40) {
+                val divisor = Random.nextInt(3, 7); val quotient = Random.nextInt(11, 19); val rem = Random.nextInt(1, divisor)
+                createQuestion("${divisor * quotient + rem} ÷ $divisor = ?", "${quotient}余${rem}", listOf("${quotient}余${(rem+1)%divisor}", "${quotient+1}余${rem}", "${quotient-1}余${rem}"), "把被除数拆成整十和零头分别除 $divisor")
+            } else {
+                val divisor = Random.nextInt(3, 9); val quotient = Random.nextInt(2, 8); val rem = Random.nextInt(1, divisor)
+                createQuestion("${divisor * quotient + rem} ÷ $divisor = ?", "${quotient}余${rem}", listOf("${quotient}余${(rem+1)%divisor}", "${quotient+1}余${rem}", "${quotient-1}余${rem}"), "想 $divisor 乘几最接近")
+            }
+        }
+        // 概念题升级①：克/千克、米/分米/厘米 单位换算计算
+        3 -> {
+            val n = Random.nextInt(2, 9)
+            val items = listOf(
+                Triple("$n 千克 = ( ) 克", "${n * 1000}", listOf("${n * 100}", "$n", "${n * 10000}")),
+                Triple("${n * 1000} 克 = ( ) 千克", "$n", listOf("${n * 10}", "${n * 100}", "${n * 1000}")),
+                Triple("$n 米 = ( ) 厘米", "${n * 100}", listOf("${n * 10}", "$n", "${n * 1000}")),
+                Triple("$n 米 = ( ) 分米", "${n * 10}", listOf("${n * 100}", "$n", "${n * 5}")),
+                Triple("${n * 10} 分米 = ( ) 米", "$n", listOf("${n * 10}", "${n * 100}", "${n + 10}"))
+            )
+            val it = items.random(); createQuestion(it.first, it.second, it.third)
+        }
+        // 概念题升级②：平移格数（同向相加 / 反向相消），保留概念又带口算
+        4 -> {
+            val a = Random.nextInt(2, 7); val b = Random.nextInt(2, 7)
+            if (Random.nextBoolean()) createMathQ("一个图形先向右平移 $a 格，又向右平移 $b 格，一共平移了几格？", a + b, "同方向就把两次格数加起来")
+            else { val big = maxOf(a, b); val small = minOf(a, b); createMathQ("一个图形先向右平移 $big 格，又向左平移 $small 格，现在离出发点几格？", big - small, "方向相反就相减") }
+        }
+        // 概念题升级③：万以内数的组成 / 比大小 / 近似数
+        5 -> {
+            when (Random.nextInt(3)) {
+                0 -> { val a = Random.nextInt(1, 10); val b = Random.nextInt(0, 10); val c = Random.nextInt(0, 10); val d = Random.nextInt(0, 10); val num = a*1000 + b*100 + c*10 + d; createQuestion("由 $a 个千、$b 个百、$c 个十、$d 个一组成的数是 ( )", "$num", listOf("${num + 100}", "${num - 10}", "${a*1000 + c*100 + b*10 + d}")) }
+                1 -> { val base = Random.nextInt(11, 90); val num = base * 100 + Random.nextInt(1, 100); val rounded = ((num + 50) / 100) * 100; createQuestion("$num ≈ ( )（精确到百位）", "$rounded", listOf("${rounded - 100}", "${rounded + 100}", "${(num/100)*100}")) }
+                else -> { val nums = (1..4).map { Random.nextInt(1000, 9999) }.distinct(); val mx = nums.maxOrNull()!!; createQuestion("下面哪个数最大？", "$mx", nums.filter { it != mx }.map { "$it" }) }
+            }
+        }
+        // 混合：凑整两步，乘法部分仍表内
+        else -> {
+            val a = Random.nextInt(2, 10); val b = Random.nextInt(2, 10)
+            if (diff <= 1) {
+                val c = Random.nextInt(2, 20); createMathQ("$a × $b + $c = ?", a * b + c, "先算乘法再加")
+            } else {
+                val m = Random.nextInt(1, 4); val delta = Random.nextInt(1, 4); val c = m * 100 - delta
+                createMathQ("$a × $b + $c = ?", a * b + c, "先算 $a×$b，再把 $c 凑成 ${m * 100} 加")
+            }
+        }
         }
         val typeName = if (idx < 7) "old-" + grade2TypeNames[idx] else "old-" + grade2TypeNames[6]
-        lastGeneratedOldMathType = typeName
         return Pair(q, typeName)
     }
 
-    // 手输得数题：基础口算，去掉选项、降低蒙对率（③）
+    // 手输得数题：去掉选项、降低蒙对率；按难度档抬高加减范围（凑整友好），乘法仍表内
     private fun generateInputMath(): Question {
+        val diff = currentDifficulty
         return when (Random.nextInt(3)) {
-            0 -> { val a = Random.nextInt(11, 90); val b = Random.nextInt(11, 90); Question("$a + $b = ?", emptyList(), 0, inputAnswer = "${a + b}", tip = "可以先凑整十再加") }
-            1 -> { val a = Random.nextInt(30, 99); val b = Random.nextInt(10, a); Question("$a - $b = ?", emptyList(), 0, inputAnswer = "${a - b}", tip = "不够减时要向前一位借 1") }
+            0 -> {
+                if (diff <= 1) { val a = Random.nextInt(11, 90); val b = Random.nextInt(11, 90); Question("$a + $b = ?", emptyList(), 0, inputAnswer = "${a + b}", tip = "可以先凑整十再加") }
+                else { val m = Random.nextInt(1, 5); val delta = Random.nextInt(1, 4); val b = m * 100 - delta; val a = Random.nextInt(120, 1000 - m * 100); Question("$a + $b = ?", emptyList(), 0, inputAnswer = "${a + b}", tip = "把 $b 看成 ${m * 100} 先加，再减 $delta") }
+            }
+            1 -> {
+                if (diff <= 1) { val a = Random.nextInt(30, 99); val b = Random.nextInt(10, a); Question("$a - $b = ?", emptyList(), 0, inputAnswer = "${a - b}", tip = "不够减时要向前一位借 1") }
+                else { val m = Random.nextInt(1, 5); val delta = Random.nextInt(1, 4); val b = m * 100 - delta; val a = Random.nextInt(b + 30, 1000); Question("$a - $b = ?", emptyList(), 0, inputAnswer = "${a - b}", tip = "把 $b 看成 ${m * 100} 先减，再加回 $delta") }
+            }
             else -> { val a = Random.nextInt(2, 10); val b = Random.nextInt(2, 10); Question("$a × $b = ?", emptyList(), 0, inputAnswer = "${a * b}", tip = "想一想 $a 的乘法口诀") }
         }
     }
 
-    private fun createMathQ(text: String, answer: Int): Question {
+    private fun createMathQ(text: String, answer: Int, tip: String? = null): Question {
         val correct = answer.toString()
         val wrongs = linkedSetOf<String>()
         // 干扰项取“常见错误值”，紧贴正确答案，避免出现一眼排除的离谱选项：
@@ -756,10 +941,10 @@ object QuestionBank {
             if (w != answer) wrongs.add(w.toString())
             d++
         }
-        return createQuestion(text, correct, wrongs.toList())
+        return createQuestion(text, correct, wrongs.toList(), tip)
     }
 
-    private fun createQuestion(text: String, correct: String, wrongs: List<String>): Question {
+    private fun createQuestion(text: String, correct: String, wrongs: List<String>, tip: String? = null): Question {
         val uniqueWrongs = wrongs.filter { it != correct }.distinct()
         var allOptions = (uniqueWrongs.take(3) + correct).distinct()
         // 确保至少有3个选项（Question要求2-4个）
@@ -782,7 +967,7 @@ object QuestionBank {
             if (allOptions.size < 3 && !allOptions.contains("以上都不对")) allOptions = allOptions + "以上都不对"
         }
         val shuffled = allOptions.shuffled()
-        return Question(text, shuffled, shuffled.indexOf(correct))
+        return Question(text, shuffled, shuffled.indexOf(correct), tip = tip)
     }
 
     // ... (其他方法保持不变，已确保逻辑调用的是经过shuffledOptions处理或者createQuestion生成的)
@@ -790,6 +975,25 @@ object QuestionBank {
         val count = errorRecords[question.text] ?: 0
         errorRecords[question.text] = if (isCorrect) maxOf(0, count - 1) else count + 1
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+        // 今日计数：答题数 / 答对数 / 今日错题（供每晚一日总结）
+        rollDayIfNeeded(prefs)
+        val ed = prefs.edit().putInt(KEY_DAILY_ANSWERED, prefs.getInt(KEY_DAILY_ANSWERED, 0) + 1)
+        if (isCorrect) {
+            ed.putInt(KEY_DAILY_CORRECT, prefs.getInt(KEY_DAILY_CORRECT, 0) + 1)
+        } else {
+            try {
+                val arr = JSONArray(prefs.getString(KEY_DAILY_RECORDS, "[]") ?: "[]")
+                arr.put(question.text)
+                // ponytail: 只保留最近 20 条错题，够家长看且不撑爆 prefs
+                val start = maxOf(0, arr.length() - 20)
+                val trimmed = JSONArray()
+                for (i in start until arr.length()) trimmed.put(arr.getString(i))
+                ed.putString(KEY_DAILY_RECORDS, trimmed.toString())
+            } catch (e: Exception) {}
+        }
+        ed.apply()
+
         val obj = JSONObject()
         errorRecords.forEach { (k, v) -> if (v > 0) obj.put(k, v) }
         prefs.edit().putString(KEY_ERROR_RECORDS, obj.toString()).apply()
@@ -853,25 +1057,150 @@ object QuestionBank {
         }
     }
     
-    // 省略剩余逻辑，确保上述核心生成方法被调用
-    fun recordUnlockEvent(context: Context, minutes: Int) {}
-    fun getDailyReport(context: Context): String? = null
-    fun getRawDailyReport(context: Context): String? = null
-    fun clearDailyReport(context: Context) {}
-    fun hasDailyData(context: Context): Boolean = false
+    // ===== 每日数据累计 + 一日总结（每晚 20:00 推送，当天没答题则不发）=====
+    // 跨天自动归零：任何读写前先调用，发现 DailyDataTimestamp 不是今天就清零今日计数
+    private fun rollDayIfNeeded(prefs: SharedPreferences) {
+        val today = dayKey()
+        if (prefs.getInt(KEY_DAILY_DATA_TIMESTAMP, 0) != today) {
+            prefs.edit()
+                .putInt(KEY_DAILY_DATA_TIMESTAMP, today)
+                .putInt(KEY_DAILY_ANSWERED, 0)
+                .putInt(KEY_DAILY_CORRECT, 0)
+                .putInt(KEY_DAILY_UNLOCK_COUNT, 0)
+                .putInt(KEY_DAILY_UNLOCK_MINUTES, 0)
+                .putInt(KEY_DAILY_BONUS, 0)
+                .putString(KEY_DAILY_RECORDS, "[]")   // 今日错题清单
+                .apply()
+        }
+    }
+
+    fun recordUnlockEvent(context: Context, minutes: Int) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        rollDayIfNeeded(prefs)
+        prefs.edit()
+            .putInt(KEY_DAILY_UNLOCK_COUNT, prefs.getInt(KEY_DAILY_UNLOCK_COUNT, 0) + 1)
+            .putInt(KEY_DAILY_UNLOCK_MINUTES, prefs.getInt(KEY_DAILY_UNLOCK_MINUTES, 0) + minutes)
+            .apply()
+    }
+
+    // 拼一日总结（详细版）；今天答题数为 0 返回 null（定时跳过 / 手动弹「暂无记录」）
+    private fun buildDailyReport(context: Context): String? {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        rollDayIfNeeded(prefs)
+        val answered = prefs.getInt(KEY_DAILY_ANSWERED, 0)
+        if (answered == 0) return null
+        val correct = prefs.getInt(KEY_DAILY_CORRECT, 0)
+        val unlocks = prefs.getInt(KEY_DAILY_UNLOCK_COUNT, 0)
+        val minutes = prefs.getInt(KEY_DAILY_UNLOCK_MINUTES, 0)
+        val streak = prefs.getInt(KEY_STREAK, 0)
+        val stars = prefs.getInt(KEY_STARS, 0)
+        val rate = Math.round(correct * 100f / answered)
+
+        val sb = StringBuilder("#### 小欣 · 一日学习总结\n\n")
+        sb.append("- **今日解锁:** $unlocks 次，累计奖励 $minutes 分钟\n")
+        sb.append("- **今日答题:** 答对 $correct / $answered（正确率 $rate%）\n")
+        sb.append("- **坚持:** 🔥 连续 $streak 天 ・ ⭐ 累计 $stars 颗星\n")
+        getWeakPointsText(context)?.let { sb.append("- **近期易错（建议辅导）:** $it\n") }
+        val wrongs = mutableListOf<String>()
+        try {
+            val arr = JSONArray(prefs.getString(KEY_DAILY_RECORDS, "[]") ?: "[]")
+            for (i in 0 until arr.length()) wrongs.add(arr.getString(i))
+        } catch (e: Exception) {}
+        if (wrongs.isNotEmpty()) sb.append("\n**今日错题本:**\n- " + wrongs.joinToString("\n- "))
+        return sb.toString()
+    }
+
+    fun getDailyReport(context: Context): String? = buildDailyReport(context)
+
+    // 发送成功后清零今日计数，避免同一天重复发送
+    fun clearDailyReport(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit()
+            .putInt(KEY_DAILY_DATA_TIMESTAMP, dayKey())
+            .putInt(KEY_DAILY_ANSWERED, 0)
+            .putInt(KEY_DAILY_CORRECT, 0)
+            .putInt(KEY_DAILY_UNLOCK_COUNT, 0)
+            .putInt(KEY_DAILY_UNLOCK_MINUTES, 0)
+            .putString(KEY_DAILY_RECORDS, "[]")
+            .apply()
+    }
+
+    fun hasDailyData(context: Context): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        rollDayIfNeeded(prefs)
+        return prefs.getInt(KEY_DAILY_ANSWERED, 0) > 0
+    }
+
+    // 每日解锁次数上限（默认 3）+ 今日已解锁次数（靠答题/超管通关计数；远程家长解锁不计）
+    fun getDailyUnlockLimit(context: Context): Int =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getInt(KEY_DAILY_UNLOCK_LIMIT, 3)
+
+    fun setDailyUnlockLimit(context: Context, n: Int) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putInt(KEY_DAILY_UNLOCK_LIMIT, n.coerceIn(0, 20)).apply()
+    }
+
+    fun getTodayUnlockCount(context: Context): Int {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        rollDayIfNeeded(prefs)
+        return prefs.getInt(KEY_DAILY_UNLOCK_COUNT, 0)
+    }
+
+    // 今日临时奖励次数（远程“加一次”），按天清零；有效上限 = limit + bonus
+    fun getTodayBonus(context: Context): Int {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        rollDayIfNeeded(prefs)
+        return prefs.getInt(KEY_DAILY_BONUS, 0)
+    }
+
+    fun addTodayBonus(context: Context, n: Int) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        rollDayIfNeeded(prefs)
+        prefs.edit().putInt(KEY_DAILY_BONUS, prefs.getInt(KEY_DAILY_BONUS, 0) + n.coerceIn(1, 10)).apply()
+    }
+
+    // 远程“重置次数/清零”：把今日已用次数与临时奖励都清 0
+    fun resetTodayUnlocks(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        rollDayIfNeeded(prefs)
+        prefs.edit().putInt(KEY_DAILY_UNLOCK_COUNT, 0).putInt(KEY_DAILY_BONUS, 0).apply()
+    }
+
+    // App 更新/重装后清零今日次数（装好从 0 开始，避免一启动就“用完”）
+    fun maybeResetOnUpgrade(context: Context, versionCode: Int) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (prefs.getInt(KEY_LAST_VERSION, -1) != versionCode) {
+            prefs.edit().putInt(KEY_LAST_VERSION, versionCode)
+                .putInt(KEY_DAILY_UNLOCK_COUNT, 0).putInt(KEY_DAILY_BONUS, 0).apply()
+        }
+    }
+
+    // 解锁次数用完页面用：随机来一道“教学题”（直接亮答案+讲解），记忆类(语文)或技巧类(巧算/思维)
+    fun getTeachingCard(): String {
+        fun card(label: String, q: Question): String {
+            val ans = q.inputAnswer ?: q.options.getOrNull(q.correctIndex).orEmpty()
+            val tip = if (!q.tip.isNullOrBlank()) "\n💡 ${q.tip}" else ""
+            return "$label\n${q.text}\n✅ 答案：$ans$tip"
+        }
+        return when (Random.nextInt(3)) {
+            0 -> card("📖 语文积累", generateAcademicChineseQuestion())
+            1 -> card("💡 巧算技巧", SmartCalcGenerator.generate())
+            else -> card("🧠 思维技巧", ThinkingMathGenerator.generate())
+        }
+    }
     fun isMathQuestion(text: String): Boolean = true
-    fun isFirstQuizToday(context: Context): Boolean = true
-    fun markFirstQuizDoneToday(context: Context) {}
     fun getTotalQuestionConfig(context: Context): Int {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return prefs.getInt(KEY_TOTAL_QUESTIONS, 10)
+        return prefs.getInt(KEY_TOTAL_QUESTIONS, 20)
     }
 
     fun setTotalQuestionConfig(context: Context, count: Int) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putInt(KEY_TOTAL_QUESTIONS, count).apply()
     }
-    fun getCloudVersion(context: Context): Int = 0
-    fun getLastReportTime(context: Context): Long = 0L
-    fun setLastReportTime(context: Context, time: Long) {}
+    fun getLastReportTime(context: Context): Long =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getLong(KEY_LAST_REPORT_TIME, 0L)
+
+    fun setLastReportTime(context: Context, time: Long) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putLong(KEY_LAST_REPORT_TIME, time).apply()
+    }
 }

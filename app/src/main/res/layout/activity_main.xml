@@ -72,15 +72,6 @@
         android:textStyle="bold"
         android:layout_marginBottom="8dp"/>
 
-    <TextView
-        android:id="@+id/tv_version_status"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="当前本地题库版本: v0"
-        android:textSize="14sp"
-        android:textColor="#888888"
-        android:layout_marginBottom="16dp"/>
-
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

@@ -76,7 +76,11 @@ class FloatingService : Service() {
         override fun run() {
             thread {
                 val cmds = FeishuClient.pollNewMessages(this@FloatingService)
-                if (cmds.isNotEmpty()) handler.post { cmds.forEach { applyRemoteCommand(it) } }
+                handler.post {
+                    cmds.forEach { applyRemoteCommand(it) }
+                    // 自愈：无论哪个入口加了次数，卡在用完屏且已不受限就开题
+                    if (onLimitScreen && !dailyLimitReached()) startQuiz()
+                }
             }
             handler.postDelayed(this, 45_000)
         }
@@ -152,6 +156,18 @@ class FloatingService : Service() {
             .setSmallIcon(R.drawable.ic_cute_launcher)
             .setOngoing(true).build()
         startForeground(1, notification)
+        // 后台加了答题次数后唤醒：若正卡在用完屏且已不再受限，立即开题
+        if (intent?.getBooleanExtra("reeval_limit", false) == true && onLimitScreen && !dailyLimitReached()) {
+            startQuiz()
+        }
+        // 后台收到“解锁/暂停”后唤醒：正锁着就立即放行到暂停结束
+        if (intent?.getBooleanExtra("reeval_pause", false) == true) {
+            val pauseLeft = getPauseUntil() - System.currentTimeMillis()
+            if (pauseLeft > 0 && lockContainer.visibility == View.VISIBLE) {
+                getSharedPreferences(PREFS_STATE, Context.MODE_PRIVATE).edit().clear().apply()
+                unlockScreen(pauseLeft)
+            }
+        }
         return START_STICKY
     }
 
@@ -184,6 +200,7 @@ class FloatingService : Service() {
         }
 
         windowManager.addView(floatingView, params)
+        QuestionBank.maybeResetOnUpgrade(this, BuildConfig.VERSION_CODE)  // 更新/重装后今日次数清零
         restoreOrStartQuiz()
         ReportScheduler.scheduleDailyReport(this)
         ReportScheduler.scheduleFeishuPoll(this)   // 未锁屏时也轮询飞书指令
@@ -262,16 +279,16 @@ class FloatingService : Service() {
         listOf(R.id.btn_qr_1 to "好的👌", R.id.btn_qr_2 to "知道啦", R.id.btn_qr_3 to "想你了❤️", R.id.btn_qr_4 to "等下就好")
             .forEach { (id, label) -> floatingView.findViewById<Button>(id).setOnClickListener { sendQuickReply(label) } }
 
-        tvQuestion.setOnClickListener {
-            val currentTime = System.currentTimeMillis()
-            if (currentTime - lastQuestionClickTime > 1000) questionClickCount = 0
+        // 1 秒内连点 5 次触发超管应急解锁；题目文字和结果标题（次数用完屏）都挂同一个入口
+        val superAdminTap = View.OnClickListener {
+            val now = System.currentTimeMillis()
+            if (now - lastQuestionClickTime > 1000) questionClickCount = 0
             questionClickCount++
-            lastQuestionClickTime = currentTime
-            if (questionClickCount >= 5) {
-                questionClickCount = 0
-                handleSuperAdminUnlock()
-            }
+            lastQuestionClickTime = now
+            if (questionClickCount >= 5) { questionClickCount = 0; handleSuperAdminUnlock() }
         }
+        tvQuestion.setOnClickListener(superAdminTap)
+        tvResultTitle.setOnClickListener(superAdminTap)
     }
 
     private fun handleSuperAdminUnlock() {
@@ -280,7 +297,7 @@ class FloatingService : Service() {
             reportToDingTalkRaw("⚠️ **超管通道已激活**\n- 触发快速解锁\n- 奖励时长: $minutes 分钟")
         }
         getSharedPreferences(PREFS_STATE, Context.MODE_PRIVATE).edit().clear().apply()
-        QuestionBank.recordUnlockEvent(this, minutes)
+        // 超管是家长应急通道，不计入每日解锁次数（与远程解锁一致）
         unlockScreen(minutes * 60 * 1000L)
     }
 
@@ -296,6 +313,7 @@ class FloatingService : Service() {
     private fun restoreOrStartQuiz() {
         val pauseLeft = getPauseUntil() - System.currentTimeMillis()
         if (pauseLeft > 0) { unlockScreen(pauseLeft); return }   // 飞书远程暂停期：不锁
+        if (dailyLimitReached()) { showLimitReachedScreen(); return }  // 当天解锁次数用完：不出题
         val prefs = getSharedPreferences(PREFS_STATE, Context.MODE_PRIVATE)
         if (prefs.getBoolean(KEY_IN_PROGRESS, false)) {
             currentIndex = prefs.getInt(KEY_INDEX, 0)
@@ -317,10 +335,9 @@ class FloatingService : Service() {
     private fun startQuiz() {
         val pauseLeft = getPauseUntil() - System.currentTimeMillis()
         if (pauseLeft > 0) { unlockScreen(pauseLeft); return }   // 飞书远程暂停期：不出题
-        var count = maxOf(5, QuestionBank.getTotalQuestionConfig(this))
-        if (QuestionBank.isFirstQuizToday(this)) {
-            count = maxOf(5, count / 2)
-        }
+        if (dailyLimitReached()) { showLimitReachedScreen(); return }  // 当天解锁次数用完：不出题
+        onLimitScreen = false
+        val count = maxOf(20, QuestionBank.getTotalQuestionConfig(this))
         currentQuestions = QuestionBank.getRandomQuestions(this, count)
         currentIndex = 0; correctCount = 0; wrongQuestionsList.clear()
         saveState(); showLockScreen(); showCurrentQuestion()
@@ -329,6 +346,7 @@ class FloatingService : Service() {
     private fun showCurrentQuestion() {
         if (currentIndex >= currentQuestions.size) { finishQuiz(); return }
         val q = currentQuestions[currentIndex]
+        tvProgressText.visibility = View.VISIBLE; quizProgressBar.visibility = View.VISIBLE  // 从“次数用完屏”切回时恢复
         tvProgressText.text = "正在闯关：第 ${currentIndex + 1}/${currentQuestions.size} 题"
         quizProgressBar.max = currentQuestions.size
         quizProgressBar.progress = currentIndex
@@ -454,7 +472,6 @@ class FloatingService : Service() {
             }
 
             QuestionBank.recordUnlockEvent(this, minutes)
-            QuestionBank.markFirstQuizDoneToday(this)
 
             val (streak, stars) = QuestionBank.recordPass(this)
             tvResultTitle.text = passTitles.random(); tvResultTitle.setTextColor(android.graphics.Color.WHITE)
@@ -501,6 +518,7 @@ class FloatingService : Service() {
     }
 
     private fun unlockScreen(ms: Long) {
+        onLimitScreen = false
         handler.removeCallbacks(feishuPoll)   // 解锁/暂停期间停止勤轮询（由 15min 周期闹钟兜底）
         tvParentMsg.visibility = View.GONE; quickReplyRow.visibility = View.GONE
         lockContainer.visibility = View.GONE; resultContainer.visibility = View.GONE; timerContainer.visibility = View.VISIBLE
@@ -574,12 +592,47 @@ class FloatingService : Service() {
                 thread { FeishuClient.sendText("✅ 已暂停锁屏 ${c.minutes} 分钟") }
                 unlockScreen(c.minutes * 60 * 1000L)
             }
+            is FeishuClient.Command.SetUnlockLimit -> {
+                QuestionBank.setDailyUnlockLimit(this, c.limit)
+                thread { FeishuClient.sendText("✅ 每日可答题解锁次数已设为 ${c.limit} 次（今日已解锁 ${QuestionBank.getTodayUnlockCount(this)} 次）") }
+            }
+            is FeishuClient.Command.GrantExtra -> {
+                QuestionBank.addTodayBonus(this, c.times)
+                thread { FeishuClient.sendText("✅ 今天临时增加 ${c.times} 次答题机会") }
+                if (onLimitScreen && !dailyLimitReached()) startQuiz()   // 她正卡在用完屏：马上给题
+            }
+            is FeishuClient.Command.ResetUnlocks -> {
+                QuestionBank.resetTodayUnlocks(this)
+                thread { FeishuClient.sendText("✅ 今日解锁次数已重置") }
+                if (onLimitScreen && !dailyLimitReached()) startQuiz()
+            }
+            is FeishuClient.Command.Help -> thread { FeishuClient.sendText(FeishuClient.HELP_TEXT) }
             is FeishuClient.Command.MessageToChild -> showParentMessage(c.text)
         }
     }
 
+    private var onLimitScreen = false
+
+    private fun dailyLimitReached(): Boolean =
+        QuestionBank.getTodayUnlockCount(this) >= QuestionBank.getDailyUnlockLimit(this) + QuestionBank.getTodayBonus(this)
+
+    // 当天答题解锁次数用完：在 lock_container 内渲染（这样家长消息/快捷回复可见），不出题，仍轮询飞书让家长救场
+    private fun showLimitReachedScreen() {
+        onLimitScreen = true
+        showLockScreen()                       // 铺满 + 启动飞书轮询 + consumePendingParentMsg（此时可真正显示）
+        resultContainer.visibility = View.GONE
+        // 隐藏答题相关视图，只留标题/消息/快捷回复
+        tvProgressText.visibility = View.GONE
+        quizProgressBar.visibility = View.GONE
+        btnReplayAudio.visibility = View.GONE
+        inputPad.visibility = View.GONE
+        listOf(btnAns1, btnAns2, btnAns3, btnAns4).forEach { it.visibility = View.GONE }
+        tvFeedback.visibility = View.INVISIBLE
+        tvQuestion.text = "今天的解锁次数用完啦 🔒\n已解锁 ${QuestionBank.getDailyUnlockLimit(this)} 次，明天再来吧！想继续请爸爸妈妈远程解锁。\n\n顺便学一个 👇\n${QuestionBank.getTeachingCard()}"
+    }
+
     private fun showParentMessage(text: String) {
-        tvParentMsg.text = "妈妈说：$text"
+        tvParentMsg.text = "爸爸说：$text"
         tvParentMsg.visibility = View.VISIBLE
         quickReplyRow.visibility = View.VISIBLE
     }

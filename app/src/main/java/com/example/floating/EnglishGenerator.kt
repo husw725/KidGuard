@@ -78,9 +78,14 @@ object EnglishGenerator {
             .shuffled().take(3).map { it.emoji }
         val options = (distractors + target.emoji).shuffled()
 
-        val isNew = !mastery.containsKey(target.en)   // 先教后测：新词露出答案，旧词隐藏
-        val text = if (isNew) "🆕 这是 ${target.emoji} ${target.en}，听一听，点一下它"
-        else "🔊 听一听，点出听到的图片"
+        // 先教后测：掌握度≤0（全新词 or 答错清零=忘了）露出答案再教一次，旧词隐藏考查
+        val seen = mastery.containsKey(target.en)
+        val needTeach = (mastery[target.en] ?: 0) <= 0
+        val text = when {
+            needTeach && !seen -> "🆕 这是 ${target.emoji} ${target.en}，听一听，点一下它"
+            needTeach          -> "🔁 再记一次：${target.emoji} ${target.en}，听一听，点一下它"
+            else               -> "🔊 听一听，点出听到的图片"
+        }
         return Question(text, options, options.indexOf(target.emoji), audioWord = target.en)
     }
 

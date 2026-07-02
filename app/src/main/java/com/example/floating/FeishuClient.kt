@@ -25,11 +25,15 @@ object FeishuClient {
     const val KEY_PENDING_MSG = "pendingMsg"   // 未锁屏时收到的家长消息，下次锁屏展示
     const val KEY_HELP_SENT = "helpSent"       // 帮助消息只发一次
 
-    private const val HELP_TEXT =
+    const val HELP_TEXT =
         "🤖 小欣管家·遥控指令（直接在本群发文字即可）：\n" +
         "• 解锁30 — 立即解锁 30 分钟（不带数字默认 30，上限 240）\n" +
         "• 锁定 — 立即出题锁屏\n" +
         "• 停用60 — 60 分钟内不锁，给自由时间（默认 60）\n" +
+        "• 次数3 — 设置每天可答题解锁的次数（默认 3，0~20；家长远程解锁不计入）\n" +
+        "• 加一次 — 临时多给今天 1 次答题机会（仅今天有效，可带数字如“加2次”）\n" +
+        "• 重置次数 — 清零今天已用的解锁次数\n" +
+        "• help / 帮助 — 查看本指令清单\n" +
         "• 其它任意话（如“宝贝加油”）— 显示给小欣看，她可一键回复\n" +
         "⏱ 生效：她锁屏时约 45 秒；没锁屏时最长约 15 分钟。"
 
@@ -48,17 +52,28 @@ object FeishuClient {
         data class UnlockNow(val minutes: Int) : Command()
         object LockNow : Command()
         data class PauseLock(val minutes: Int) : Command()
+        data class SetUnlockLimit(val limit: Int) : Command()
+        data class GrantExtra(val times: Int) : Command()
+        object ResetUnlocks : Command()
+        object Help : Command()
         data class MessageToChild(val text: String) : Command()
     }
 
     /** 纯函数：把家长文本解析成指令（可单测）。先去掉 @提及。 */
     fun parseCommand(raw: String): Command {
         val t = raw.replace(Regex("@_\\w+"), "").trim()
-        val mins = Regex("(\\d+)").find(t)?.value?.toIntOrNull()
+        val num = Regex("(\\d+)").find(t)?.value?.toIntOrNull()
         return when {
-            t.startsWith("解锁") || t.startsWith("unlock", true) -> Command.UnlockNow((mins ?: 30).coerceIn(1, 240))
+            t.equals("help", true) || t == "帮助" || t == "指令" || t == "菜单" || t == "?" || t == "？" -> Command.Help
+            // 重置要放在“次数/加”之前（“重置次数”含“次数”）
+            t.contains("重置") || t.contains("清零") || t.equals("reset", true) -> Command.ResetUnlocks
+            // 加机会要放在“次数/解锁”之前；兼容“加1次/加一次/加次数/加机会”，但“加油”不触发
+            (t.contains("加") && (t.contains("次") || t.contains("机会") || t.contains("答题"))) || t.startsWith("+") || t.contains("奖励") -> Command.GrantExtra((num ?: 1).coerceIn(1, 10))
+            // 设次数要放在“解锁”之前，避免“解锁次数3”被当成立即解锁
+            t.contains("次数") || t.startsWith("限制") || t.startsWith("limit", true) -> Command.SetUnlockLimit((num ?: 3).coerceIn(0, 20))
+            t.startsWith("解锁") || t.startsWith("unlock", true) -> Command.UnlockNow((num ?: 30).coerceIn(1, 240))
             t.startsWith("锁定") || t.startsWith("马上锁") || t.startsWith("lock", true) -> Command.LockNow
-            t.startsWith("停用") || t.startsWith("暂停") || t.contains("不锁") -> Command.PauseLock((mins ?: 60).coerceIn(1, 1440))
+            t.startsWith("停用") || t.startsWith("暂停") || t.contains("不锁") -> Command.PauseLock((num ?: 60).coerceIn(1, 1440))
             else -> Command.MessageToChild(t)
         }
     }
