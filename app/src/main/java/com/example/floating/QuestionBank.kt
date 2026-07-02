@@ -433,26 +433,31 @@ object QuestionBank {
             .apply()
     }
 
-    // --- 高阶思维训练：逆向思维数学 ---
+    // --- 高阶思维训练：逆向思维数学（数字都收在口算范围，靠倒推思路而非硬算）---
     private fun generateReverseMath(): Question {
-        val rangeModifier = currentDifficulty
         return when (Random.nextInt(3)) {
             0 -> {
-                val days = Random.nextInt(3, 5 + rangeModifier)
-                val count = Random.nextInt(2, 5)
-                val start = count * Math.pow(2.0, days.toDouble()).toInt()
-                createQuestion("小欣采了若干松果，每天吃掉一半，第 $days 天剩下 $count 个，她最开始采了多少个？", "$start", listOf("${start / 2}", "${start * 2}", "${count * days}"))
+                // 一步减半：现在剩 count 个 = 原来的一半，原来 = count × 2（口算）
+                val count = Random.nextInt(3, 13)
+                val start = count * 2
+                createQuestion("小欣有一些松果，吃掉了一半后还剩 $count 个，她原来有多少个？", "$start",
+                    listOf("$count", "${count + 2}", "${start + 2}"),
+                    "剩下的是一半，把它加倍（×2）就是原来的")
             }
             1 -> {
-                val remain = Random.nextInt(5, 10 + rangeModifier * 5)
-                val lastSpent = Random.nextInt(2, 5 + rangeModifier * 3)
+                val remain = Random.nextInt(5, 15)
+                val lastSpent = Random.nextInt(2, 8)
                 val start = (remain + lastSpent) * 2
-                createQuestion("小欣买文具，先花了一半钱，又用了 $lastSpent 元，最后剩下 $remain 元，她原本有多少钱？", "$start", listOf("${start / 2}", "${remain + lastSpent}", "${start + 10}"))
+                createQuestion("小欣买文具，先花了一半钱，又用了 $lastSpent 元，最后剩下 $remain 元，她原本有多少钱？", "$start",
+                    listOf("${start / 2}", "${remain + lastSpent}", "${start + 10}"),
+                    "倒推：先把最后剩的和又用的加起来，再×2（那是一半）")
             }
             else -> {
-                val restCount = Random.nextInt(5, 5 + rangeModifier * 5)
+                val restCount = Random.nextInt(5, 12)
                 val startFloor = restCount + 1
-                createQuestion("小欣下楼梯，每下一层都要休息一下，下到第 1 层时恰好休息了 $restCount 次，她从第几层开始下的？", "$startFloor", listOf("${restCount}", "${restCount + 2}", "第 1 层"))
+                createQuestion("小欣下楼梯，每下一层都要休息一下，下到第 1 层时恰好休息了 $restCount 次，她从第几层开始下的？", "$startFloor",
+                    listOf("$restCount", "${restCount + 2}", "第 1 层"),
+                    "下一层休息一次，休息 $restCount 次就下了 $restCount 层，再加上停的那层")
             }
         }
     }
@@ -713,25 +718,26 @@ object QuestionBank {
     private fun generateAdvancedMathQuestion(typeIdx: Int = -1): Pair<Question, String> {
         val idx = if (typeIdx >= 0) typeIdx else Random.nextInt(27)
         val q = when (idx) {
-        0 -> { val a = Random.nextInt(3, 12); val b = Random.nextInt(3, 12); createMathQ("小朋友排队，小欣从左数第 $a 个，从右数第 $b 个，这一排共有多少人？", a + b - 1) }
-        1 -> { val total = Random.nextInt(15, 30); val a = Random.nextInt(5, 12); createMathQ("一排共有 $total 个小朋友，小欣从左边数是第 $a 个，从右数她是第几个？", total - a + 1) }
-        2 -> { val dist = Random.nextInt(3, 8); val gap = Random.nextInt(2, 5); createMathQ("在一条长 ${dist * gap} 米的小路一边种树，每隔 $gap 米种一棵（两端都种），共需多少棵？", dist + 1) }
-        3 -> { val pieces = Random.nextInt(3, 8); val perCut = Random.nextInt(2, 6); createMathQ("把一根木头锯成 $pieces 段，每锯一次需要 $perCut 分钟，一共需要多少分钟？", (pieces - 1) * perCut) }
-        4 -> { 
-            val floorsPerSegment = Random.nextInt(2, 5) // 每一段的楼层数
-            val timePerFloor = Random.nextInt(5, 15) * 2 // 确保是偶数，方便后续计算
+        0 -> { val a = Random.nextInt(3, 12); val b = Random.nextInt(3, 12); createMathQ("小朋友排队，小欣从左数第 $a 个，从右数第 $b 个，这一排共有多少人？", a + b - 1, "从两边数，小欣被数了两次，记得减 1") }
+        1 -> { val total = Random.nextInt(15, 30); val a = Random.nextInt(5, 12); createMathQ("一排共有 $total 个小朋友，小欣从左边数是第 $a 个，从右数她是第几个？", total - a + 1, "从右数的位置 = 总人数 − 从左数的位置 + 1") }
+        2 -> { val dist = Random.nextInt(3, 8); val gap = Random.nextInt(2, 5); createMathQ("在一条长 ${dist * gap} 米的小路一边种树，每隔 $gap 米种一棵（两端都种），共需多少棵？", dist + 1, "两端都种时，棵数比间隔数多 1") }
+        3 -> { val pieces = Random.nextInt(3, 8); val perCut = Random.nextInt(2, 6); createMathQ("把一根木头锯成 $pieces 段，每锯一次需要 $perCut 分钟，一共需要多少分钟？", (pieces - 1) * perCut, "锯成 n 段只锯了 (n−1) 次，先算锯几次") }
+        4 -> {
+            val floorsPerSegment = Random.nextInt(2, 4) // 每一段的楼层数
+            val timePerFloor = Random.nextInt(3, 7)      // 每层秒数取小，结果压在两位数
             val floorA = 1 + floorsPerSegment
             val timeA = floorsPerSegment * timePerFloor
-            val floorB = floorA + Random.nextInt(2, 5)
+            val floorB = floorA + Random.nextInt(2, 4)
             val timeB = (floorB - 1) * timePerFloor
-            createMathQ("小欣从 1 楼爬到 $floorA 楼用了 $timeA 秒，以同样的速度爬到 $floorB 楼需要多少秒？", timeB) 
+            createMathQ("小欣从 1 楼爬到 $floorA 楼用了 $timeA 秒，以同样的速度爬到 $floorB 楼需要多少秒？", timeB,
+                "从 1 楼到 n 楼其实只爬了 (n−1) 层，先算爬一层几秒")
         }
-        5 -> { val count = Random.nextInt(5, 12); createMathQ("$count 个小朋友围成一个圆圈玩游戏，每两个小朋友之间放一盆花，一共需要多少盆花？", count) }
-        6 -> { val dad = Random.nextInt(30, 45); val son = Random.nextInt(5, 12); val years = Random.nextInt(3, 20); createMathQ("爸爸今年 $dad 岁，小欣 $son 岁。$years 年后，爸爸比小欣大多少岁？", dad - son) }
-        7 -> { val sum = Random.nextInt(30, 50); val years = Random.nextInt(2, 6); createMathQ("今年爸爸和小欣的年龄和是 $sum 岁，$years 年后，他们的年龄和是多少岁？", sum + years * 2) }
-        8 -> { val m = Random.nextInt(1, 5); val cm = Random.nextInt(10, 90); if (Random.nextBoolean()) createMathQ("$m 米 $cm 厘米 + ${100 - cm} 厘米 = ( ) 米", m + 1) else createMathQ("${m * 100 + cm} 厘米 - $m 米 = ( ) 厘米", cm) }
-        9 -> { val total = Random.nextInt(21, 35); val cap = Random.nextInt(4, 7); val ans = (total + cap - 1) / cap; createQuestion("$total 个小朋友去划船，每条船限坐 $cap 人，至少要租 ( ) 条船。", "$ans", listOf("${ans - 1}", "${ans + 1}", "${total / cap}")) }
-        10 -> { val money = Random.nextInt(20, 40); val price = Random.nextInt(3, 7); val ans = money / price; createQuestion("小明有 $money 元钱，买 $price 元一个的本子，最多可以买 ( ) 个。", "$ans", listOf("${ans + 1}", "${ans - 1}", "${ans + 2}")) }
+        5 -> { val count = Random.nextInt(5, 12); createMathQ("$count 个小朋友围成一个圆圈玩游戏，每两个小朋友之间放一盆花，一共需要多少盆花？", count, "围成一圈时，花的盆数和人数一样多") }
+        6 -> { val dad = Random.nextInt(30, 45); val son = Random.nextInt(5, 12); val years = Random.nextInt(3, 20); createMathQ("爸爸今年 $dad 岁，小欣 $son 岁。$years 年后，爸爸比小欣大多少岁？", dad - son, "两人一起长大，年龄差永远不变") }
+        7 -> { val sum = Random.nextInt(30, 50); val years = Random.nextInt(2, 6); createMathQ("今年爸爸和小欣的年龄和是 $sum 岁，$years 年后，他们的年龄和是多少岁？", sum + years * 2, "每过 1 年两人各长 1 岁，年龄和增加 2") }
+        8 -> { val m = Random.nextInt(1, 5); val cm = Random.nextInt(10, 90); if (Random.nextBoolean()) createMathQ("$m 米 $cm 厘米 + ${100 - cm} 厘米 = ( ) 米", m + 1, "1 米 = 100 厘米，先把厘米凑成整米") else createMathQ("${m * 100 + cm} 厘米 - $m 米 = ( ) 厘米", cm, "1 米 = 100 厘米，先统一单位再减") }
+        9 -> { val total = Random.nextInt(21, 35); val cap = Random.nextInt(4, 7); val ans = (total + cap - 1) / cap; createQuestion("$total 个小朋友去划船，每条船限坐 $cap 人，至少要租 ( ) 条船。", "$ans", listOf("${ans - 1}", "${ans + 1}", "${total / cap}"), "除完若还剩下人，要多租一条船装他们") }
+        10 -> { val money = Random.nextInt(20, 40); val price = Random.nextInt(3, 7); val ans = money / price; createQuestion("小明有 $money 元钱，买 $price 元一个的本子，最多可以买 ( ) 个。", "$ans", listOf("${ans + 1}", "${ans - 1}", "${ans + 2}"), "看这些钱里最多包含几个单价") }
         11 -> { 
             val allColors = listOf("红", "黄", "蓝", "绿", "紫", "粉")
             val n = Random.nextInt(3, 5) // 随机生成 3 或 4 个颜色
@@ -740,25 +746,25 @@ object QuestionBank {
             val ans = colors[(target - 1) % n]
             val wrongs = colors.filter { it != ans }
             val patternDesc = colors.joinToString("、") + "..."
-            createQuestion("按照“$patternDesc”的规律排列，第 $target 个是 ( ) 色。", ans, wrongs)
+            createQuestion("按照“$patternDesc”的规律排列，第 $target 个是 ( ) 色。", ans, wrongs, "几种颜色一组循环，看第 $target 个落在一组里的第几位")
         }
-        12 -> { val num = Random.nextInt(3001, 9999); val ans = ((num + 500) / 1000) * 1000; createQuestion("$num 的近似数是 ( )", "$ans", listOf("${ans - 1000}", "${ans + 1000}", "${ans - 500}")) }
-        13 -> { val a = Random.nextInt(3, 7); val b = Random.nextInt(3, 7); val left = a * b; val right = (a + 1) * (b - 1); val op = if (left > right) ">" else if (left < right) "<" else "="; createQuestion("$a × $b [ ] ${a + 1} × ${b - 1}", op, listOf(">", "<", "=").filter { it != op }) }
-        14 -> { val m = Random.nextInt(3, 8); val n = Random.nextInt(2, 4); createMathQ("小明有 $m 个苹果，小红的苹果数是小明的 $n 倍，两人共有多少个苹果？", m * (n + 1)) }
-        15 -> { val yellow = Random.nextInt(3, 8); val n = Random.nextInt(3, 6); createMathQ("筐里有红球和黄球，黄球有 $yellow 个，红球数量是黄球的 $n 倍，红球有多少个？", yellow * n) }
-        16 -> { val n = Random.nextInt(3, 5); val son = if (n == 3) Random.nextInt(10, 13) else Random.nextInt(7, 11); val dad = son * n; createMathQ("今年爸爸 $dad 岁，小欣 $son 岁，爸爸的年龄是小欣的多少倍？", n) }
+        12 -> { val num = Random.nextInt(3001, 9999); val ans = ((num + 500) / 1000) * 1000; createQuestion("$num 的近似数是 ( )", "$ans", listOf("${ans - 1000}", "${ans + 1000}", "${ans - 500}"), "看百位：满 500 向千位进 1，不满就舍去") }
+        13 -> { val a = Random.nextInt(3, 7); val b = Random.nextInt(3, 7); val left = a * b; val right = (a + 1) * (b - 1); val op = if (left > right) ">" else if (left < right) "<" else "="; createQuestion("$a × $b [ ] ${a + 1} × ${b - 1}", op, listOf(">", "<", "=").filter { it != op }, "两边分别先算出得数，再比大小") }
+        14 -> { val m = Random.nextInt(3, 8); val n = Random.nextInt(2, 4); createMathQ("小明有 $m 个苹果，小红的苹果数是小明的 $n 倍，两人共有多少个苹果？", m * (n + 1), "先想两人一共是几份，再乘每份的数") }
+        15 -> { val yellow = Random.nextInt(3, 8); val n = Random.nextInt(3, 6); createMathQ("筐里有红球和黄球，黄球有 $yellow 个，红球数量是黄球的 $n 倍，红球有多少个？", yellow * n, "红球 = 黄球 × 倍数") }
+        16 -> { val n = Random.nextInt(3, 5); val son = if (n == 3) Random.nextInt(10, 13) else Random.nextInt(7, 11); val dad = son * n; createMathQ("今年爸爸 $dad 岁，小欣 $son 岁，爸爸的年龄是小欣的多少倍？", n, "看爸爸的年龄里面有几个小欣的年龄") }
         // 新增 10 种题型 (idx 17-26)
-        17 -> { val h = Random.nextInt(1, 12); val m_choices = listOf(0, 15, 30, 45); val m = m_choices.random(); val m_str = if (m == 0) "12" else if (m == 15) "3" else if (m == 30) "6" else "9"; createQuestion("钟面上时针指向 $h，分针指向 $m_str，现在是 ( )", "$h:${if (m == 0) "00" else "$m"}", listOf("$h:${if (m == 0) "30" else "00"}", "${if (h < 12) h + 1 else 1}:00", "$h:55")) }
-        18 -> { val start_h = Random.nextInt(7, 10); val mins = listOf(15, 30, 45, 60).random(); val end_h = start_h + mins / 60; val end_m = mins % 60; val end_m_str = if (end_m == 0) "00" else "$end_m"; createQuestion("小欣 $start_h:00 开始写作业，写了 $mins 分钟，( ) 写完。", "$end_h:$end_m_str", listOf("${if (end_h > 1) end_h - 1 else end_h}:00", "${end_h + 1}:00", "$end_h:${(end_m + 10) % 60}")) }
-        19 -> { val face: String = listOf("北", "南", "东", "西").random(); val back = mapOf("北" to "南", "南" to "北", "东" to "西", "西" to "东")[face]!!; val allDirs: List<String> = listOf("东", "西", "南", "北"); createQuestion("小明面向$face，他的后面是什么方向？", back, allDirs.filter { it != back }) }
-        20 -> { val yuan = Random.nextInt(1, 10); val jiao = listOf(5, 10, 50).random(); val total_jiao = yuan * 10 + jiao; createQuestion("$yuan 元 $jiao 角 = ( ) 角", "$total_jiao", listOf("${yuan * 10}", "${total_jiao + 5}", "${total_jiao - 10}")) }
-        21 -> { val n = Random.nextInt(2, 4); val total = n * (n - 1); val digitList = (1..n).joinToString("、"); createQuestion("用 $digitList 这${n}个数字可以组成 ( ) 个没有重复数字的两位数。", "$total", listOf("${total - 1}", "${total + 1}", "${total + 2}")) }
-        22 -> { val total = Random.nextInt(20, 80); val b = Random.nextInt(5, total - 4); val a = total - b; createMathQ("（ ）+ $b = $total，括号里应该填几？", a) }
-        23 -> { val a = Random.nextInt(8, 15); createQuestion("小明跳了 $a 下，小红比小明多跳 3 下，小兰比小红多跳 2 下，小兰跳了 ( ) 下。", "${a + 5}", listOf("${a + 3}", "${a + 2}", "${a + 4}")) }
-        24 -> { val shapes = listOf(Triple("正方体", "6", listOf("4", "5", "8")), Triple("长方体", "6", listOf("4", "5", "8")), Triple("圆柱", "3", listOf("2", "4", "6"))); val s = shapes.random(); createQuestion("${s.first}有几个面？", s.second, s.third) }
-        25 -> { val x = Random.nextInt(5, 20); val add = Random.nextInt(10, 30); val total = x + add; createQuestion("一个数加上 $add 等于 $total，这个数是 ( )", "$x", listOf("${x + 1}", "${x + 2}", "${x - 1}")) }
-        26 -> { val total_apples = Random.nextInt(10, 30); val kids = Random.nextInt(3, 7); val quotient = total_apples / kids; val rem = total_apples % kids; createQuestion("$total_apples 个苹果平均分给 $kids 个小朋友，每人 ${quotient} 个，还剩 ( ) 个。", "$rem", listOf("${if (rem > 0) rem - 1 else 1}", "${rem + 1}", "${rem + 2}")) }
-        else -> { val n = Random.nextInt(3, 5); val son = if (n == 3) Random.nextInt(10, 13) else Random.nextInt(7, 11); val dad = son * n; createMathQ("今年爸爸 $dad 岁，小欣 $son 岁，爸爸的年龄是小欣的多少倍？", n) }
+        17 -> { val h = Random.nextInt(1, 12); val m_choices = listOf(0, 15, 30, 45); val m = m_choices.random(); val m_str = if (m == 0) "12" else if (m == 15) "3" else if (m == 30) "6" else "9"; createQuestion("钟面上时针指向 $h，分针指向 $m_str，现在是 ( )", "$h:${if (m == 0) "00" else "$m"}", listOf("$h:${if (m == 0) "30" else "00"}", "${if (h < 12) h + 1 else 1}:00", "$h:55"), "时针指几就是几点，分针指的位置换成分钟") }
+        18 -> { val start_h = Random.nextInt(7, 10); val mins = listOf(15, 30, 45, 60).random(); val end_h = start_h + mins / 60; val end_m = mins % 60; val end_m_str = if (end_m == 0) "00" else "$end_m"; createQuestion("小欣 $start_h:00 开始写作业，写了 $mins 分钟，( ) 写完。", "$end_h:$end_m_str", listOf("${if (end_h > 1) end_h - 1 else end_h}:00", "${end_h + 1}:00", "$end_h:${(end_m + 10) % 60}"), "从开始时间往后数经过的分钟") }
+        19 -> { val face: String = listOf("北", "南", "东", "西").random(); val back = mapOf("北" to "南", "南" to "北", "东" to "西", "西" to "东")[face]!!; val allDirs: List<String> = listOf("东", "西", "南", "北"); createQuestion("小明面向$face，他的后面是什么方向？", back, allDirs.filter { it != back }, "面向一个方向，后面就是它的相反方向") }
+        20 -> { val yuan = Random.nextInt(1, 10); val jiao = listOf(5, 10, 50).random(); val total_jiao = yuan * 10 + jiao; createQuestion("$yuan 元 $jiao 角 = ( ) 角", "$total_jiao", listOf("${yuan * 10}", "${total_jiao + 5}", "${total_jiao - 10}"), "1 元 = 10 角，先把元换成角再相加") }
+        21 -> { val n = Random.nextInt(2, 4); val total = n * (n - 1); val digitList = (1..n).joinToString("、"); createQuestion("用 $digitList 这${n}个数字可以组成 ( ) 个没有重复数字的两位数。", "$total", listOf("${total - 1}", "${total + 1}", "${total + 2}"), "每个数字都能当十位，十位定了个位还剩几种选") }
+        22 -> { val total = Random.nextInt(20, 80); val b = Random.nextInt(5, total - 4); val a = total - b; createMathQ("（ ）+ $b = $total，括号里应该填几？", a, "用总数减去已经知道的那个加数") }
+        23 -> { val a = Random.nextInt(8, 15); createQuestion("小明跳了 $a 下，小红比小明多跳 3 下，小兰比小红多跳 2 下，小兰跳了 ( ) 下。", "${a + 5}", listOf("${a + 3}", "${a + 2}", "${a + 4}"), "一层层往上加：先算小红，再算小兰") }
+        24 -> { val shapes = listOf(Triple("正方体", "6", listOf("4", "5", "8")), Triple("长方体", "6", listOf("4", "5", "8")), Triple("圆柱", "3", listOf("2", "4", "6"))); val s = shapes.random(); createQuestion("${s.first}有几个面？", s.second, s.third, "闭上眼睛想一想这个立体图形有几个面") }
+        25 -> { val x = Random.nextInt(5, 20); val add = Random.nextInt(10, 30); val total = x + add; createQuestion("一个数加上 $add 等于 $total，这个数是 ( )", "$x", listOf("${x + 1}", "${x + 2}", "${x - 1}"), "用结果减去加上去的那个数") }
+        26 -> { val total_apples = Random.nextInt(10, 30); val kids = Random.nextInt(3, 7); val quotient = total_apples / kids; val rem = total_apples % kids; createQuestion("$total_apples 个苹果平均分给 $kids 个小朋友，每人 ${quotient} 个，还剩 ( ) 个。", "$rem", listOf("${if (rem > 0) rem - 1 else 1}", "${rem + 1}", "${rem + 2}"), "分完后剩下的，一定比小朋友的人数少") }
+        else -> { val n = Random.nextInt(3, 5); val son = if (n == 3) Random.nextInt(10, 13) else Random.nextInt(7, 11); val dad = son * n; createMathQ("今年爸爸 $dad 岁，小欣 $son 岁，爸爸的年龄是小欣的多少倍？", n, "看爸爸的年龄里面有几个小欣的年龄") }
         }
         val typeName = if (idx < 27) "old-" + advancedTypeNames[idx] else "old-" + advancedTypeNames[26]
         return Pair(q, typeName)
@@ -826,21 +832,20 @@ object QuestionBank {
         val idx = if (type >= 0) type else Random.nextInt(7)
         val diff = currentDifficulty
         val q = when (idx) {
-        // 加减：基础档两位数；进阶/挑战档三位数，但有一个数接近整十整百 → 凑整法口算
+        // 加减：全档两位数口算；进阶/挑战改出“接近整十/整百的凑整题”，得数仍可心算
         0 -> {
             if (diff <= 1) {
                 val a = Random.nextInt(10, 90); val b = Random.nextInt(10, 90)
                 if (Random.nextBoolean()) createMathQ("$a + $b = ?", a + b) else createMathQ("${maxOf(a, b)} - ${minOf(a, b)} = ?", maxOf(a, b) - minOf(a, b))
             } else {
-                val m = if (diff >= 3) Random.nextInt(2, 9) else Random.nextInt(1, 4)  // 接近 m 个整百
                 val delta = Random.nextInt(1, 4)
-                val b = m * 100 - delta                                                // 如 98 / 197 / 296
+                val b = 100 - delta                                    // 97 / 98 / 99，凑整到 100
                 if (Random.nextBoolean()) {
-                    val a = Random.nextInt(120, 1000 - m * 100)
-                    createMathQ("$a + $b = ?", a + b, "把 $b 看成 ${m * 100} 先加，再减 $delta")
+                    val a = Random.nextInt(11, 99)                     // 被加数两位数，得数 <200 可口算
+                    createMathQ("$a + $b = ?", a + b, "把 $b 看成 100 先加，再减 $delta")
                 } else {
-                    val a = Random.nextInt(b + 30, 1000)
-                    createMathQ("$a - $b = ?", a - b, "把 $b 看成 ${m * 100} 先减，再加回 $delta")
+                    val a = Random.nextInt(b + 5, 199)                 // 减数接近整百，凑整后口算
+                    createMathQ("$a - $b = ?", a - b, "把 $b 看成 100 先减，再加回 $delta")
                 }
             }
         }
@@ -854,15 +859,10 @@ object QuestionBank {
                 val b = Random.nextInt(2, 10); createMathQ("$a × $b = ?", a * b, "想一想 $a 的乘法口诀")
             }
         }
-        // 除法：以表内为主；进阶/挑战偶尔两位数÷一位数有余数（可拆成整十+零头）
+        // 除法：全档表内有余除法（商 ≤ 9），不出竖式
         2 -> {
-            if (diff >= 2 && Random.nextInt(100) < 40) {
-                val divisor = Random.nextInt(3, 7); val quotient = Random.nextInt(11, 19); val rem = Random.nextInt(1, divisor)
-                createQuestion("${divisor * quotient + rem} ÷ $divisor = ?", "${quotient}余${rem}", listOf("${quotient}余${(rem+1)%divisor}", "${quotient+1}余${rem}", "${quotient-1}余${rem}"), "把被除数拆成整十和零头分别除 $divisor")
-            } else {
-                val divisor = Random.nextInt(3, 9); val quotient = Random.nextInt(2, 8); val rem = Random.nextInt(1, divisor)
-                createQuestion("${divisor * quotient + rem} ÷ $divisor = ?", "${quotient}余${rem}", listOf("${quotient}余${(rem+1)%divisor}", "${quotient+1}余${rem}", "${quotient-1}余${rem}"), "想 $divisor 乘几最接近")
-            }
+            val divisor = Random.nextInt(3, 9); val quotient = Random.nextInt(2, 8); val rem = Random.nextInt(1, divisor)
+            createQuestion("${divisor * quotient + rem} ÷ $divisor = ?", "${quotient}余${rem}", listOf("${quotient}余${(rem+1)%divisor}", "${quotient+1}余${rem}", "${quotient-1}余${rem}"), "想 $divisor 乘几最接近")
         }
         // 概念题升级①：克/千克、米/分米/厘米 单位换算计算
         3 -> {
@@ -874,7 +874,7 @@ object QuestionBank {
                 Triple("$n 米 = ( ) 分米", "${n * 10}", listOf("${n * 100}", "$n", "${n * 5}")),
                 Triple("${n * 10} 分米 = ( ) 米", "$n", listOf("${n * 10}", "${n * 100}", "${n + 10}"))
             )
-            val it = items.random(); createQuestion(it.first, it.second, it.third)
+            val it = items.random(); createQuestion(it.first, it.second, it.third, "大单位换小单位乘进率，小单位换大单位除进率（1千克=1000克，1米=100厘米）")
         }
         // 概念题升级②：平移格数（同向相加 / 反向相消），保留概念又带口算
         4 -> {
@@ -890,33 +890,21 @@ object QuestionBank {
                 else -> { val nums = (1..4).map { Random.nextInt(1000, 9999) }.distinct(); val mx = nums.maxOrNull()!!; createQuestion("下面哪个数最大？", "$mx", nums.filter { it != mx }.map { "$it" }) }
             }
         }
-        // 混合：凑整两步，乘法部分仍表内
+        // 混合：表内乘 + 两位数加，得数可心算
         else -> {
             val a = Random.nextInt(2, 10); val b = Random.nextInt(2, 10)
-            if (diff <= 1) {
-                val c = Random.nextInt(2, 20); createMathQ("$a × $b + $c = ?", a * b + c, "先算乘法再加")
-            } else {
-                val m = Random.nextInt(1, 4); val delta = Random.nextInt(1, 4); val c = m * 100 - delta
-                createMathQ("$a × $b + $c = ?", a * b + c, "先算 $a×$b，再把 $c 凑成 ${m * 100} 加")
-            }
+            val c = Random.nextInt(2, 30); createMathQ("$a × $b + $c = ?", a * b + c, "先算乘法 $a×$b，再加 $c")
         }
         }
         val typeName = if (idx < 7) "old-" + grade2TypeNames[idx] else "old-" + grade2TypeNames[6]
         return Pair(q, typeName)
     }
 
-    // 手输得数题：去掉选项、降低蒙对率；按难度档抬高加减范围（凑整友好），乘法仍表内
+    // 手输得数题：无选项须精确得数，因此全部限两位数加减 + 表内乘，保证口算可及
     private fun generateInputMath(): Question {
-        val diff = currentDifficulty
         return when (Random.nextInt(3)) {
-            0 -> {
-                if (diff <= 1) { val a = Random.nextInt(11, 90); val b = Random.nextInt(11, 90); Question("$a + $b = ?", emptyList(), 0, inputAnswer = "${a + b}", tip = "可以先凑整十再加") }
-                else { val m = Random.nextInt(1, 5); val delta = Random.nextInt(1, 4); val b = m * 100 - delta; val a = Random.nextInt(120, 1000 - m * 100); Question("$a + $b = ?", emptyList(), 0, inputAnswer = "${a + b}", tip = "把 $b 看成 ${m * 100} 先加，再减 $delta") }
-            }
-            1 -> {
-                if (diff <= 1) { val a = Random.nextInt(30, 99); val b = Random.nextInt(10, a); Question("$a - $b = ?", emptyList(), 0, inputAnswer = "${a - b}", tip = "不够减时要向前一位借 1") }
-                else { val m = Random.nextInt(1, 5); val delta = Random.nextInt(1, 4); val b = m * 100 - delta; val a = Random.nextInt(b + 30, 1000); Question("$a - $b = ?", emptyList(), 0, inputAnswer = "${a - b}", tip = "把 $b 看成 ${m * 100} 先减，再加回 $delta") }
-            }
+            0 -> { val a = Random.nextInt(11, 90); val b = Random.nextInt(11, 90); Question("$a + $b = ?", emptyList(), 0, inputAnswer = "${a + b}", tip = "可以先凑整十再加") }
+            1 -> { val a = Random.nextInt(30, 99); val b = Random.nextInt(10, a); Question("$a - $b = ?", emptyList(), 0, inputAnswer = "${a - b}", tip = "不够减时要向前一位借 1") }
             else -> { val a = Random.nextInt(2, 10); val b = Random.nextInt(2, 10); Question("$a × $b = ?", emptyList(), 0, inputAnswer = "${a * b}", tip = "想一想 $a 的乘法口诀") }
         }
     }

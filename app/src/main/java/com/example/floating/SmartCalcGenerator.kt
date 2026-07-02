@@ -50,12 +50,13 @@ object SmartCalcGenerator {
     private data class RoundSetup(val a: Int, val nr: Int, val r: Int, val diff: Int, val op: Char, val below: Boolean)
 
     private fun roundSetup(): RoundSetup {
-        val r = listOf(100, 200, 300).random()
+        val r = 100                              // 只凑整到 100，得数留在可口算范围
         val diff = Random.nextInt(1, 4)          // 1~3
         val below = Random.nextBoolean()
-        val nr = if (below) r - diff else r + diff
+        val nr = if (below) r - diff else r + diff   // 97~103
         val op = if (Random.nextBoolean()) '+' else '-'
-        val a = if (op == '+') Random.nextInt(20, 400) else nr + Random.nextInt(20, 300)
+        // 加法：另一个数两位数（得数 <200）；减法：被减数 = nr + 两位数，凑整后口算
+        val a = if (op == '+') Random.nextInt(11, 99) else nr + Random.nextInt(11, 90)
         return RoundSetup(a, nr, r, diff, op, below)
     }
 

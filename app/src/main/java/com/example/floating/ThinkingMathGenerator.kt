@@ -9,7 +9,7 @@ import kotlin.random.Random
 object ThinkingMathGenerator {
 
     fun generate(): Question {
-        val type = Random.nextInt(18)
+        val type = Random.nextInt(16)
         val q = when (type) {
             0 -> generateTreePlanting()
             1 -> generateSawLog()
@@ -23,12 +23,10 @@ object ThinkingMathGenerator {
             9 -> generateReverseProblem()
             10 -> generateCircleProblem()
             11 -> generateStairsProblem()
-            12 -> generateAllotSameRemainder()
-            13 -> generateMeterReading()
-            14 -> generateLogicDeduction()
-            15 -> generateEquivalentExchange()
-            16 -> generateHandshake()
-            17 -> generateCountFigures()
+            12 -> generateLogicDeduction()
+            13 -> generateEquivalentExchange()
+            14 -> generateHandshake()
+            15 -> generateCountFigures()
             else -> generateAgeDifference()
         }
         return q.copy(tip = q.tip ?: tips[typeNames[type]])
@@ -37,9 +35,9 @@ object ThinkingMathGenerator {
     var lastGeneratedType: String = ""
     private val typeNames = listOf("treePlanting","sawLog","ageProblem","queueProblem","ropeProblem",
         "numberPattern","sumMultiple","chickenRabbit","matchstick","reverseProblem","circleProblem","stairsProblem",
-        "allotSameRemainder","meterReading","logicDeduction","equivalentExchange","handshake","countFigures")
+        "logicDeduction","equivalentExchange","handshake","countFigures")
 
-    // 各题型答错时的一句话解题思路（点中误区）
+    // 各题型答错/求助时的一句话解题思路（点中误区，不直接给答案）
     private val tips = mapOf(
         "treePlanting" to "两端都种时，棵数 = 间隔数 + 1",
         "sawLog" to "锯 1 次断成 2 段，段数比次数多 1",
@@ -53,8 +51,6 @@ object ThinkingMathGenerator {
         "reverseProblem" to "倒推法：从最后的结果一步步往回算",
         "circleProblem" to "围成一圈时，间隔数 = 人数（首尾相连）",
         "stairsProblem" to "从 1 楼到 n 楼，其实只走了 (n−1) 层",
-        "allotSameRemainder" to "余数相同：先求两个人数的最小公倍数，再加上余数",
-        "meterReading" to "先算这个月用了多少度，再加上月读数，就是这个月的读数",
         "logicDeduction" to "把条件一条条排除，剩下的就是答案",
         "equivalentExchange" to "一步步换：先换成中间的东西，再换成要求的",
         "handshake" to "每人和其他人各一次，但每次握手数了两遍，要除以 2",
@@ -95,12 +91,10 @@ object ThinkingMathGenerator {
             9 -> generateReverseProblem()
             10 -> generateCircleProblem()
             11 -> generateStairsProblem()
-            12 -> generateAllotSameRemainder()
-            13 -> generateMeterReading()
-            14 -> generateLogicDeduction()
-            15 -> generateEquivalentExchange()
-            16 -> generateHandshake()
-            17 -> generateCountFigures()
+            12 -> generateLogicDeduction()
+            13 -> generateEquivalentExchange()
+            14 -> generateHandshake()
+            15 -> generateCountFigures()
             else -> generateAgeDifference()
         }
         return q.copy(tip = q.tip ?: tips[typeNames[idx]])
@@ -351,7 +345,7 @@ object ThinkingMathGenerator {
             }
             // 翻倍（等比）
             1 -> {
-                val start = Random.nextInt(1, 4)
+                val start = Random.nextInt(1, 3)          // start 收小，末项不过大，翻倍可口算
                 val seq = mutableListOf(start)
                 for (i in 1 until 5) seq.add(seq.last() * 2)
                 val answer = seq.last() * 2
@@ -466,8 +460,8 @@ object ThinkingMathGenerator {
         return when (Random.nextInt(3)) {
             // 鸡兔同笼
             0 -> {
-                val chickens = Random.nextInt(2, 8)
-                val rabbits = Random.nextInt(1, 6)
+                val chickens = Random.nextInt(2, 6)
+                val rabbits = Random.nextInt(1, 5)
                 val heads = chickens + rabbits
                 val legs = chickens * 2 + rabbits * 4
                 createQuestion(
@@ -479,8 +473,8 @@ object ThinkingMathGenerator {
             }
             // 自行车和三轮车
             1 -> {
-                val bikes = Random.nextInt(3, 10)
-                val trikes = Random.nextInt(1, 8)
+                val bikes = Random.nextInt(3, 7)
+                val trikes = Random.nextInt(1, 5)
                 val total = bikes + trikes
                 val wheels = bikes * 2 + trikes * 3
                 createQuestion(
@@ -492,8 +486,8 @@ object ThinkingMathGenerator {
             }
             // 求兔子
             else -> {
-                val chickens = Random.nextInt(2, 7)
-                val rabbits = Random.nextInt(2, 6)
+                val chickens = Random.nextInt(2, 6)
+                val rabbits = Random.nextInt(2, 5)
                 val heads = chickens + rabbits
                 val legs = chickens * 2 + rabbits * 4
                 createQuestion(
@@ -508,44 +502,28 @@ object ThinkingMathGenerator {
 
     // ============ ⑨ 火柴棒问题 ============
     private fun generateMatchstick(): Question {
-        return when (Random.nextInt(3)) {
+        return if (Random.nextBoolean()) {
             // 连在一起的 n 个正方形
-            0 -> {
-                val n = Random.nextInt(2, 10)
-                val answer = 3 * n + 1
-                val wrongs = listOf(4 * n, 3 * n, 3 * (n + 1) + 1, 3 * n - 1)
-                    .filter { it != answer && it > 0 }.distinct().take(3)
-                createQuestion(
-                    "用火柴棒搭正方形，搭 1 个要 4 根，搭 2 个连在一起要 7 根，搭 $n 个连在一起要几根？",
-                    "$answer",
-                    wrongs.map { "$it" }
-                )
-            }
+            val n = Random.nextInt(2, 10)
+            val answer = 3 * n + 1
+            val wrongs = listOf(4 * n, 3 * n, 3 * (n + 1) + 1, 3 * n - 1)
+                .filter { it != answer && it > 0 }.distinct().take(3)
+            createQuestion(
+                "用火柴棒搭正方形，搭 1 个要 4 根，搭 2 个连在一起要 7 根，搭 $n 个连在一起要几根？",
+                "$answer",
+                wrongs.map { "$it" }
+            )
+        } else {
             // 搭三角形
-            1 -> {
-                val n = Random.nextInt(2, 8)
-                val answer = 2 * n + 1
-                val wrongs = listOf(3 * n, 2 * n, 2 * (n + 1) + 1, 2 * n - 1)
-                    .filter { it != answer && it > 0 }.distinct().take(3)
-                createQuestion(
-                    "用火柴棒搭三角形，搭 1 个要 3 根，搭 2 个连在一起要 5 根，搭 $n 个连在一起要几根？",
-                    "$answer",
-                    wrongs.map { "$it" }
-                )
-            }
-            // 搭 1 行 n 个正方形（上下左右都有）
-            2 -> {
-                val n = Random.nextInt(2, 6)
-                val answer = n * (n + 1) * 2
-                val wrongs = listOf(n * n * 2, (n + 1) * (n + 1) * 2, n * 4, answer + 1)
-                    .filter { it != answer && it > 0 }.distinct().take(3)
-                createQuestion(
-                    "搭 $n 行 $n 列的小正方形（网格），最少需要多少根火柴棒？",
-                    "$answer",
-                    wrongs.map { "$it" }
-                )
-            }
-            else -> generateMatchstick()
+            val n = Random.nextInt(2, 8)
+            val answer = 2 * n + 1
+            val wrongs = listOf(3 * n, 2 * n, 2 * (n + 1) + 1, 2 * n - 1)
+                .filter { it != answer && it > 0 }.distinct().take(3)
+            createQuestion(
+                "用火柴棒搭三角形，搭 1 个要 3 根，搭 2 个连在一起要 5 根，搭 $n 个连在一起要几根？",
+                "$answer",
+                wrongs.map { "$it" }
+            )
         }
     }
 
@@ -580,19 +558,16 @@ object ThinkingMathGenerator {
                     wrongs.map { "$it" }
                 )
             }
-            // 三步倒推
+            // 两步倒推（数字都是两位数以内，倒着加回去即可口算）
             else -> {
-                val start = Random.nextInt(10, 30)
-                val sub1 = Random.nextInt(2, start / 2)
-                val after1 = start - sub1
-                val mul = 2
-                val after2 = after1 * mul
+                val start = Random.nextInt(15, 40)
+                val spent = Random.nextInt(3, start - 5)
                 val add = Random.nextInt(2, 10)
-                val final = after2 + add
-                val wrongs = listOf(start - 1, start + 1, after2, after1 + add)
+                val final = start - spent + add
+                val wrongs = listOf(start - 1, start + 1, final, start - spent)
                     .filter { it != start && it > 0 }.distinct().take(3)
                 createQuestion(
-                    "小欣有一些钱，先花了 $sub1 元，剩下的钱翻了 $mul 倍，又赚了 $add 元，现在有 $final 元，原来有几元？",
+                    "小欣有一些钱，先花了 $spent 元，又赚了 $add 元，现在有 $final 元，原来有几元？",
                     "$start",
                     wrongs.map { "$it" }
                 )
@@ -644,48 +619,7 @@ object ThinkingMathGenerator {
         )
     }
 
-    // ============ ⑬ 相同余数分配题（最小公倍数）============
-    /** 分给 a 人余 r、分给 b 人也余 r → 满足的数 = a,b 的公倍数 + r；最少 = LCM(a,b)+r */
-    private fun generateAllotSameRemainder(): Question {
-        val pairs = listOf(3 to 4, 4 to 6, 2 to 3, 3 to 5, 4 to 5, 2 to 5)
-        val (a, b) = pairs.random()
-        val r = Random.nextInt(1, minOf(a, b))
-        val lcm = a / gcd(a, b) * b
-        return if (Random.nextBoolean()) {
-            val ans = lcm + r
-            val wrongs = listOf(lcm, lcm + r + a, lcm * 2 + r, r, lcm - r, ans + b)
-                .filter { it > 0 && it != ans }.distinct().take(3)
-            createQuestion("一些糖果，平均分给 $a 个小朋友余 $r 个，平均分给 $b 个小朋友也余 $r 个。这些糖果最少有多少个？", "$ans", wrongs.map { "$it" })
-        } else {
-            val k = Random.nextInt(1, 3); val ans = lcm * k + r
-            val wrongs = listOf(ans + 1, ans - 1, ans + a, ans + b, lcm * k, ans + lcm + 1, ans + 2)
-                .filter { it > 0 && it != ans && !(it % a == r && it % b == r) }.distinct().take(3)
-            createQuestion("下面哪个数，平均分给 $a 人和平均分给 $b 人都正好余 $r 个？", "$ans", wrongs.map { "$it" })
-        }
-    }
-
-    // ============ ⑭ 电表/水表看不清数字 ============
-    /** 给上月读数 R、上月用量 U、这月比上月多用/少用 d → 这月读数 = R + (U±d)，其中一位看不清，求那位 */
-    private fun generateMeterReading(): Question {
-        val r = Random.nextInt(12, 95) * 10          // 上月读数（整十，3 位左右）
-        val u = Random.nextInt(3, 12) * 10           // 上月用量（整十）
-        var more = Random.nextBoolean()
-        val d = Random.nextInt(1, 5) * 10            // 差额（整十）
-        if (!more && u - d < 10) more = true         // 保证这月用量为正
-        val thisUse = if (more) u + d else u - d
-        val thisReading = r + thisUse
-        val s = thisReading.toString()
-        val pos = if (s.length >= 3) Random.nextInt(1, s.length - 1) else 1  // 取中间位
-        val ansDigit = s[pos].toString()
-        val shown = s.substring(0, pos) + "□" + s.substring(pos + 1)
-        val word = if (more) "多用了" else "少用了"
-        val wrongs = (0..9).map { "$it" }.filter { it != ansDigit }.shuffled().take(3)
-        return createQuestion(
-            "小欣家上月电表读数是 $r 度，上个月用了 $u 度电。这个月比上个月$word $d 度，这个月电表读数是 $shown 度（□ 处看不清）。□ 是几？",
-            ansDigit, wrongs)
-    }
-
-    // ============ ⑮ 逻辑推理 ============
+    // ============ ⑬ 逻辑推理 ============
     private fun generateLogicDeduction(): Question {
         val names = listOf("小欣", "小明", "小红", "小华", "小丽", "小杰")
         return if (Random.nextBoolean()) {
@@ -741,8 +675,6 @@ object ThinkingMathGenerator {
             createQuestion("把一个长方形平均分成一排 $n 个小格子，图中一共能数出几个长方形？", "$ans", wrongs.map { "$it" })
         }
     }
-
-    private fun gcd(x: Int, y: Int): Int = if (y == 0) x else gcd(y, x % y)
 
     // ============ 公共方法 ============
     private fun createQuestion(text: String, correct: String, wrongs: List<String>): Question {

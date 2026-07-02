@@ -58,6 +58,7 @@ class FloatingService : Service() {
     private lateinit var btnRetry: Button
     private lateinit var tvTimer: TextView
     private lateinit var btnReplayAudio: Button
+    private lateinit var btnHelp: Button
     private lateinit var inputPad: View
     private lateinit var tvInputDisplay: TextView
 
@@ -257,6 +258,7 @@ class FloatingService : Service() {
         btnRetry = floatingView.findViewById(R.id.btn_retry)
         tvTimer = floatingView.findViewById(R.id.tv_timer)
         btnReplayAudio = floatingView.findViewById(R.id.btn_replay_audio)
+        btnHelp = floatingView.findViewById(R.id.btn_help)
 
         btnAns1.setOnClickListener { checkAnswer(0) }
         btnAns2.setOnClickListener { checkAnswer(1) }
@@ -264,6 +266,7 @@ class FloatingService : Service() {
         btnAns4.setOnClickListener { checkAnswer(3) }
         btnRetry.setOnClickListener { startQuiz() }
         btnReplayAudio.setOnClickListener { playCurrentWord() }
+        btnHelp.setOnClickListener { showHelp() }
 
         inputPad = floatingView.findViewById(R.id.input_pad)
         tvInputDisplay = floatingView.findViewById(R.id.tv_input_display)
@@ -361,6 +364,8 @@ class FloatingService : Service() {
             tvQuestion.text = q.text
         }
         btnReplayAudio.visibility = if (isAudio) View.VISIBLE else View.GONE
+        // 有思路可讲（tip 非空）才显示求助按钮；语文认读/英语听音题多数无 tip，自然不显示
+        btnHelp.visibility = if (q.tip != null) View.VISIBLE else View.GONE
 
         // 手输得数题：显示数字键盘（选项为空，4 个选项按钮会自动隐藏）
         val isInput = q.inputAnswer != null
@@ -393,6 +398,15 @@ class FloatingService : Service() {
         if (locked || currentIndex >= currentQuestions.size) return
         val q = currentQuestions[currentIndex]
         handleAnswer(q, idx == q.correctIndex)
+    }
+
+    // 求助：只显示解题思路，不给答案、不判对错、不锁定，孩子想清楚后照常作答
+    private fun showHelp() {
+        if (locked || currentIndex >= currentQuestions.size) return
+        val tip = currentQuestions[currentIndex].tip ?: return
+        tvFeedback.text = "💡 想一想：$tip"
+        tvFeedback.setTextColor(android.graphics.Color.parseColor("#1976D2"))
+        tvFeedback.visibility = View.VISIBLE
     }
 
     private fun appendDigit(s: String) {

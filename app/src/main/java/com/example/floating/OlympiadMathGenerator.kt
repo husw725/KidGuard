@@ -7,15 +7,11 @@ object OlympiadMathGenerator {
      * 生成一道奥数风格的题目
      */
     fun generate(): Question {
-        return when (Random.nextInt(3)) {
-            0 -> generatePeriodicity() // 周期律
-            1 -> generateSequencePattern() // 数列规律
-            else -> generateAlgebraicReasoning() // 简单代数推理
-        }
+        return if (Random.nextBoolean()) generatePeriodicity() else generateSequencePattern()
     }
     // 加权版本
     var lastGeneratedType: String = ""
-    private val olympiadTypeNames = listOf("periodicity", "sequencePattern", "algebraicReasoning")
+    private val olympiadTypeNames = listOf("periodicity", "sequencePattern")
 
     fun generateWeighted(seenRound: Map<String, Int>, errors: Map<String, Int>): Question {
         val maxRound = (seenRound.values.maxOrNull() ?: 0)
@@ -35,14 +31,10 @@ object OlympiadMathGenerator {
             idx++
         }
         lastGeneratedType = "olympiad-${olympiadTypeNames[idx]}"
-        return when (idx) {
-            0 -> generatePeriodicity()
-            1 -> generateSequencePattern()
-            else -> generateAlgebraicReasoning()
-        }
+        return if (idx == 0) generatePeriodicity() else generateSequencePattern()
     }
 
-    private fun createQuestion(text: String, correct: String, wrongs: List<String>): Question {
+    private fun createQuestion(text: String, correct: String, wrongs: List<String>, tip: String? = null): Question {
         val uniqueWrongs = wrongs.filter { it != correct }.distinct().toMutableList()
         // 根据正确答案类型选择兜底：数字题用数字，非数字题用通用人名
         val filler = if (correct.matches(Regex("\\d+")))
@@ -54,7 +46,7 @@ object OlympiadMathGenerator {
             if (f != correct && !uniqueWrongs.contains(f)) uniqueWrongs.add(f)
         }
         val allOptions = (uniqueWrongs.take(3) + correct).shuffled()
-        return Question(text, allOptions, allOptions.indexOf(correct))
+        return Question(text, allOptions, allOptions.indexOf(correct), tip = tip)
     }
 
     private fun generatePeriodicity(): Question {
@@ -72,7 +64,8 @@ object OlympiadMathGenerator {
         return createQuestion(
             "按照${p.first}...的规律排列，第 ${target} 个是什么？",
             ans,
-            seq.filter { it != ans }
+            seq.filter { it != ans },
+            "每 $n 个一组循环，看第 ${target} 个落在一组里的第几位"
         )
     }
 
@@ -86,20 +79,8 @@ object OlympiadMathGenerator {
         return createQuestion(
             "数列 $sequence, ... 第 $index 项是多少？",
             "$ans",
-            listOf("${ans - diff}", "${ans + diff}", "${ans + 1}")
-        )
-    }
-
-    private fun generateAlgebraicReasoning(): Question {
-        val x = Random.nextInt(2, 6)
-        val y = Random.nextInt(1, 4)
-        val sum = x + y
-        val diff = x - y
-        
-        return createQuestion(
-            "已知 A + B = $sum，A - B = $diff，那么 A 是多少？",
-            "$x",
-            listOf("$y", "${x + 1}", "${x - 1}")
+            listOf("${ans - diff}", "${ans + diff}", "${ans + 1}"),
+            "先看每相邻两项相差多少，再从已知的一项往后一步步加"
         )
     }
 }
