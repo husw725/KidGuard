@@ -669,6 +669,13 @@ class FloatingService : Service() {
 
     private fun scheduleRestart() {
         val pi = android.app.PendingIntent.getService(applicationContext, 1, Intent(applicationContext, FloatingService::class.java), if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) android.app.PendingIntent.FLAG_ONE_SHOT or android.app.PendingIntent.FLAG_IMMUTABLE else android.app.PendingIntent.FLAG_ONE_SHOT)
-        (getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager).set(android.app.AlarmManager.ELAPSED_REALTIME_WAKEUP, android.os.SystemClock.elapsedRealtime() + 1000, pi)
+        val am = getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+        val at = android.os.SystemClock.elapsedRealtime() + 1000
+        // Doze/省电下普通 set() 会被批量推迟到维护窗口，用 AllowWhileIdle 保证及时重启
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            am.setExactAndAllowWhileIdle(android.app.AlarmManager.ELAPSED_REALTIME_WAKEUP, at, pi)
+        } else {
+            am.setExact(android.app.AlarmManager.ELAPSED_REALTIME_WAKEUP, at, pi)
+        }
     }
 }

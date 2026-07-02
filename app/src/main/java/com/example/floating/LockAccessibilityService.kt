@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.content.Intent
 import android.os.Build
 import android.view.accessibility.AccessibilityEvent
+import kotlin.concurrent.thread
 
 class LockAccessibilityService : AccessibilityService() {
 
@@ -41,5 +42,7 @@ class LockAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         super.onDestroy()
         instance = null
+        // 无障碍被关闭（时间到无法自动回桌面、少一层复活）—— 通知家长
+        thread { FeishuClient.sendText("⚠️ 小欣关掉了「无障碍」，锁屏保护变弱，请留意。") }
     }
 }
