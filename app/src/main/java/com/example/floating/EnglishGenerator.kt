@@ -37,6 +37,21 @@ object EnglishGenerator {
         pictureVocab.flatMapIndexed { ci, cat -> cat.map { Word(it.first, it.second, ci) } }
     }
 
+    // 英文 -> 中文词义（求助按钮用；零基础启蒙直接教她音—义联系）
+    private val zhMeaning = mapOf(
+        "cat" to "小猫", "dog" to "小狗", "pig" to "小猪", "duck" to "鸭子", "bird" to "小鸟",
+        "fish" to "鱼", "rabbit" to "兔子", "panda" to "熊猫", "tiger" to "老虎", "monkey" to "猴子",
+        "apple" to "苹果", "banana" to "香蕉", "pear" to "梨", "grape" to "葡萄",
+        "peach" to "桃子", "watermelon" to "西瓜", "strawberry" to "草莓", "orange" to "橙子／橙色",
+        "red" to "红色", "yellow" to "黄色", "blue" to "蓝色", "green" to "绿色",
+        "black" to "黑色", "white" to "白色", "purple" to "紫色",
+        "one" to "一(1)", "two" to "二(2)", "three" to "三(3)", "four" to "四(4)", "five" to "五(5)",
+        "six" to "六(6)", "seven" to "七(7)", "eight" to "八(8)", "nine" to "九(9)", "ten" to "十(10)",
+        "cake" to "蛋糕", "bread" to "面包", "milk" to "牛奶", "egg" to "鸡蛋",
+        "rice" to "米饭", "noodles" to "面条", "ice cream" to "冰淇淋", "cookie" to "饼干",
+        "sun" to "太阳", "rain" to "雨", "snow" to "雪", "cloud" to "云", "rainbow" to "彩虹"
+    )
+
     var lastGeneratedType: String = ""
     var lastWord: String = ""        // 本题对应的英文单词（仅听音选图有，供 QuestionBank 标记“已引入”）
 
@@ -86,7 +101,8 @@ object EnglishGenerator {
             needTeach          -> "🔁 再记一次：${target.emoji} ${target.en}，听一听，点一下它"
             else               -> "🔊 听一听，点出听到的图片"
         }
-        return Question(text, options, options.indexOf(target.emoji), audioWord = target.en)
+        return Question(text, options, options.indexOf(target.emoji), audioWord = target.en,
+            tip = "${target.en} 的意思是「${zhMeaning[target.en] ?: target.emoji}」")
     }
 
     // 字母大小写
@@ -94,35 +110,37 @@ object EnglishGenerator {
         val i = Random.nextInt(26)
         val upper = ('A' + i).toString()
         val lower = ('a' + i).toString()
+        val caseTip = "大写和小写是同一个字母的两种写法（像 Aa、Bb、Cc），想想它的另一半长什么样"
         return if (Random.nextBoolean()) {
             val wrongs = (0 until 26).filter { it != i }.shuffled().take(3).map { ('a' + it).toString() }
-            createQuestion("大写字母 “$upper” 的小写是？", lower, wrongs)
+            createQuestion("大写字母 “$upper” 的小写是？", lower, wrongs, caseTip)
         } else {
             val wrongs = (0 until 26).filter { it != i }.shuffled().take(3).map { ('A' + it).toString() }
-            createQuestion("小写字母 “$lower” 的大写是？", upper, wrongs)
+            createQuestion("小写字母 “$lower” 的大写是？", upper, wrongs, caseTip)
         }
     }
 
     // 字母顺序
     private fun letterOrder(): Question {
+        val orderTip = "在心里唱字母歌 A、B、C、D、E…，唱到它，看挨着它的是谁"
         return if (Random.nextBoolean()) {
             val i = Random.nextInt(25)          // A..Y，问后一个
             val cur = ('A' + i).toString()
             val ans = ('A' + i + 1).toString()
             val wrongs = listOf(('A' + i - 1).coerceAtLeast('A'), 'A' + (i + 2).coerceAtMost(25), 'A' + (i + 3) % 26)
                 .map { it.toString() }.filter { it != ans }.distinct()
-            createQuestion("英文字母表中，字母 “$cur” 后面是哪个？", ans, wrongs)
+            createQuestion("英文字母表中，字母 “$cur” 后面是哪个？", ans, wrongs, orderTip)
         } else {
             val i = Random.nextInt(1, 26)        // B..Z，问前一个
             val cur = ('A' + i).toString()
             val ans = ('A' + i - 1).toString()
             val wrongs = listOf('A' + (i + 1).coerceAtMost(25), 'A' + (i - 2).coerceAtLeast(0), 'A' + (i + 2) % 26)
                 .map { it.toString() }.filter { it != ans }.distinct()
-            createQuestion("英文字母表中，字母 “$cur” 前面是哪个？", ans, wrongs)
+            createQuestion("英文字母表中，字母 “$cur” 前面是哪个？", ans, wrongs, orderTip)
         }
     }
 
-    private fun createQuestion(text: String, correct: String, wrongs: List<String>): Question {
+    private fun createQuestion(text: String, correct: String, wrongs: List<String>, tip: String? = null): Question {
         val uniqueWrongs = wrongs.filter { it != correct }.distinct().take(3).toMutableList()
         val filler = listOf("A", "B", "C", "D", "E", "F")
         while (uniqueWrongs.size < 2) {
@@ -130,6 +148,6 @@ object EnglishGenerator {
             if (f != correct && !uniqueWrongs.contains(f)) uniqueWrongs.add(f)
         }
         val allOptions = (uniqueWrongs + correct).shuffled()
-        return Question(text, allOptions, allOptions.indexOf(correct))
+        return Question(text, allOptions, allOptions.indexOf(correct), tip = tip)
     }
 }
