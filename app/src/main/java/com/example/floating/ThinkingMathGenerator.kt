@@ -9,7 +9,7 @@ import kotlin.random.Random
 object ThinkingMathGenerator {
 
     fun generate(): Question {
-        val type = Random.nextInt(16)
+        val type = Random.nextInt(17)
         val q = when (type) {
             0 -> generateTreePlanting()
             1 -> generateSawLog()
@@ -27,6 +27,7 @@ object ThinkingMathGenerator {
             13 -> generateEquivalentExchange()
             14 -> generateHandshake()
             15 -> generateCountFigures()
+            16 -> generateMeterReading()
             else -> generateAgeDifference()
         }
         return q.copy(tip = q.tip ?: tips[typeNames[type]])
@@ -35,7 +36,7 @@ object ThinkingMathGenerator {
     var lastGeneratedType: String = ""
     private val typeNames = listOf("treePlanting","sawLog","ageProblem","queueProblem","ropeProblem",
         "numberPattern","sumMultiple","chickenRabbit","matchstick","reverseProblem","circleProblem","stairsProblem",
-        "logicDeduction","equivalentExchange","handshake","countFigures")
+        "logicDeduction","equivalentExchange","handshake","countFigures","meterReading")
 
     // 各题型答错/求助时的一句话解题思路（点中误区，不直接给答案）
     private val tips = mapOf(
@@ -54,7 +55,8 @@ object ThinkingMathGenerator {
         "logicDeduction" to "把条件一条条排除，剩下的就是答案",
         "equivalentExchange" to "一步步换：先换成中间的东西，再换成要求的",
         "handshake" to "每人和其他人各一次，但每次握手数了两遍，要除以 2",
-        "countFigures" to "按起点一个一个数，别漏别重：从每个点往后数"
+        "countFigures" to "按起点一个一个数，别漏别重：从每个点往后数",
+        "meterReading" to "这个月的读数 = 上月读数 + 这个月用掉的电"
     )
 
     fun generateWeighted(seenRound: Map<String, Int>, errors: Map<String, Int>): Question {
@@ -95,6 +97,7 @@ object ThinkingMathGenerator {
             13 -> generateEquivalentExchange()
             14 -> generateHandshake()
             15 -> generateCountFigures()
+            16 -> generateMeterReading()
             else -> generateAgeDifference()
         }
         return q.copy(tip = q.tip ?: tips[typeNames[idx]])
@@ -674,6 +677,19 @@ object ThinkingMathGenerator {
             val wrongs = listOf(n, n + 1, n * n, ans + 1).filter { it > 0 && it != ans }.distinct().take(3)
             createQuestion("把一个长方形平均分成一排 $n 个小格子，图中一共能数出几个长方形？", "$ans", wrongs.map { "$it" })
         }
+    }
+
+    // ============ ⑰ 电表读数（简化版：整十数相加，纯口算）============
+    /** 这个月读数 = 上月读数 + 本月用量，数值都用整十，孩子口算即可 */
+    private fun generateMeterReading(): Question {
+        val last = Random.nextInt(2, 7) * 10        // 上月读数 20~60（整十）
+        val use = Random.nextInt(1, 4) * 10         // 本月用量 10~30（整十）
+        val now = last + use
+        val wrongs = listOf(now + 10, now - 10, last)
+            .filter { it > 0 && it != now }.distinct().take(3)
+        return createQuestion(
+            "小欣家上个月电表读数是 $last 度，这个月又用了 $use 度电，现在电表读数是多少度？",
+            "$now", wrongs.map { "$it" })
     }
 
     // ============ 公共方法 ============
