@@ -436,6 +436,7 @@ class FloatingService : Service() {
         }
         QuestionBank.recordResult(this, q, isCorrect, isMath)
         QuestionBank.updateDifficulty(this, isCorrect)   // 答题表现驱动难度自适应
+        q.masteryKey?.let { QuestionBank.recordRecitationResult(this, it, isCorrect) }  // 必背内容掌握度（答错回教学卡）
         tvFeedback.visibility = View.VISIBLE
         if (q.audioWord != null) {
             // 英语听音选图：答完显示“图 + 单词拼写”并复读一遍（音—形—义再连一次），更新逐词掌握度
@@ -446,8 +447,15 @@ class FloatingService : Service() {
             handler.postDelayed({ playCurrentWord() }, 300)
             handler.postDelayed({ currentIndex++; saveState(); showCurrentQuestion() }, 1800)
         } else if (isCorrect) {
-            tvFeedback.text = praiseMessages.random(); tvFeedback.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
-            handler.postDelayed({ currentIndex++; saveState(); showCurrentQuestion() }, 600)
+            tvFeedback.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
+            if (q.masteryKey != null && q.tip != null) {
+                // 必背新内容：答对也复看一遍解析，强化记忆（其余题保持快节奏）
+                tvFeedback.text = "${praiseMessages.random()}\n💡 ${q.tip}"
+                handler.postDelayed({ currentIndex++; saveState(); showCurrentQuestion() }, 2600)
+            } else {
+                tvFeedback.text = praiseMessages.random()
+                handler.postDelayed({ currentIndex++; saveState(); showCurrentQuestion() }, 600)
+            }
         } else {
             val correctText = if (q.inputAnswer != null) q.inputAnswer
                 else "${('A' + q.correctIndex)}. ${q.options[q.correctIndex]}"

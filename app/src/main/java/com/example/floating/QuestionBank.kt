@@ -13,7 +13,8 @@ data class Question(
     val correctIndex: Int,
     val audioWord: String? = null,  // 非空 = “听音选图”题：朗读该英文单词，选项为 emoji 图片
     val tip: String? = null,        // 答错时显示的一句话讲解（点中误区）
-    val inputAnswer: String? = null // 非空 = 手输得数题（数字键盘），不使用 options
+    val inputAnswer: String? = null, // 非空 = 手输得数题（数字键盘），不使用 options
+    val masteryKey: String? = null   // 非空 = 三上必背内容（先教后测），答题后按此键更新掌握度
 ) {
     init {
         if (inputAnswer == null) {  // 输入题不依赖 options
@@ -33,6 +34,7 @@ data class Question(
         if (audioWord != null) obj.put("audioWord", audioWord)
         if (tip != null) obj.put("tip", tip)
         if (inputAnswer != null) obj.put("inputAnswer", inputAnswer)
+        if (masteryKey != null) obj.put("masteryKey", masteryKey)
         return obj
     }
 
@@ -51,7 +53,7 @@ data class Question(
         }
         
         val newOptions = (otherOptions.take(3) + correctOption).shuffled()
-        return Question(text, newOptions, newOptions.indexOf(correctOption), audioWord, tip)
+        return Question(text, newOptions, newOptions.indexOf(correctOption), audioWord, tip, masteryKey = masteryKey)
     }
 
     companion object {
@@ -64,10 +66,11 @@ data class Question(
             val audioWord = if (obj.has("audioWord")) obj.getString("audioWord") else null
             val tip = if (obj.has("tip")) obj.getString("tip") else null
             val inputAnswer = if (obj.has("inputAnswer")) obj.getString("inputAnswer") else null
-            if (inputAnswer != null) return Question(text, emptyList(), 0, audioWord, tip, inputAnswer)
+            val masteryKey = if (obj.has("masteryKey")) obj.getString("masteryKey") else null
+            if (inputAnswer != null) return Question(text, emptyList(), 0, audioWord, tip, inputAnswer, masteryKey)
             // 保持原始数据完整性，如果原始数据有问题，强制修正
             return try {
-                Question(text, opts, correctIndex, audioWord, tip)
+                Question(text, opts, correctIndex, audioWord, tip, masteryKey = masteryKey)
             } catch (e: Exception) {
                 // 简单处理数据源错误，如果导入数据不规范则返回默认结构
                 val safeOpts = (opts.distinct().take(3) + "补全").shuffled()
@@ -169,27 +172,36 @@ object QuestionBank {
         else -> "数学应用题"
     }
 
-    // ===== 英语逐词掌握度：单词 -> 答对次数（不在表=全新词；0..2=学习中；>=3=已掌握）=====
+    // ===== 逐项掌握度（英语单词 / 三上必背共用）：项 -> 答对次数（不在表=全新；0..2=学习中；>=3=已掌握）=====
     private const val KEY_ENGLISH_MASTERY = "EnglishMastery"
+    private const val KEY_RECITATION_MASTERY = "RecitationMastery"
 
-    private fun loadEnglishMastery(prefs: SharedPreferences): MutableMap<String, Int> {
+    private fun loadMastery(prefs: SharedPreferences, prefKey: String): MutableMap<String, Int> {
         val m = mutableMapOf<String, Int>()
-        val s = prefs.getString(KEY_ENGLISH_MASTERY, "{}") ?: "{}"
+        val s = prefs.getString(prefKey, "{}") ?: "{}"
         try { val o = JSONObject(s); for (k in o.keys()) m[k] = o.getInt(k) } catch (e: Exception) {}
         return m
     }
 
-    private fun saveEnglishMastery(prefs: SharedPreferences, m: Map<String, Int>) {
+    private fun saveMastery(prefs: SharedPreferences, prefKey: String, m: Map<String, Int>) {
         val o = JSONObject(); m.forEach { (k, v) -> o.put(k, v) }
-        prefs.edit().putString(KEY_ENGLISH_MASTERY, o.toString()).apply()
+        prefs.edit().putString(prefKey, o.toString()).apply()
     }
 
     // 答题后更新单词掌握度：答对 +1，答错清零
     fun recordEnglishResult(context: Context, word: String, isCorrect: Boolean) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val m = loadEnglishMastery(prefs)
+        val m = loadMastery(prefs, KEY_ENGLISH_MASTERY)
         m[word] = if (isCorrect) (m[word] ?: 0) + 1 else 0
-        saveEnglishMastery(prefs, m)
+        saveMastery(prefs, KEY_ENGLISH_MASTERY, m)
+    }
+
+    // 三上必背掌握度：答对 +1，答错清零（清零后下次回到教学卡重新教）
+    fun recordRecitationResult(context: Context, key: String, isCorrect: Boolean) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val m = loadMastery(prefs, KEY_RECITATION_MASTERY)
+        m[key] = if (isCorrect) (m[key] ?: 0) + 1 else 0
+        saveMastery(prefs, KEY_RECITATION_MASTERY, m)
     }
 
     private val cloudQuestions = mutableListOf<Question>()
@@ -549,9 +561,23 @@ object QuestionBank {
         val englishCount = if (count >= 8) 2 else 1
         val verbalLimit = (count - englishCount) / 2
 
-        // 1. 动态语文题（仿写/标点/阅读/逻辑/课内考点），约占语文的 40%
-        val dynamicVerbalTarget = maxOf(1, (verbalLimit * 0.4).toInt())
+        // 0. 三上必背（暑期预习，先教后测）：每局固定 2 道，计入语文份额
+        val recitationMastery = loadMastery(prefs, KEY_RECITATION_MASTERY)
         var guard = 0
+        while (selectedQuestions.count { it.masteryKey != null } < 2 && guard < 30) {
+            guard++
+            val q = Grade3Recitation.generateWeighted(recitationMastery)
+            if (selectedQuestions.none { it.text == q.text }) {
+                selectedQuestions.add(q)
+                val k = Grade3Recitation.lastKey
+                if (k.isNotEmpty() && !recitationMastery.containsKey(k)) recitationMastery[k] = 0  // 引入新内容（先教后测）
+            }
+        }
+        saveMastery(prefs, KEY_RECITATION_MASTERY, recitationMastery)
+
+        // 1. 动态语文题（仿写/标点/阅读/逻辑/课内考点），约占语文的 40%
+        val dynamicVerbalTarget = maxOf(1, (verbalLimit * 0.4).toInt()) + selectedQuestions.size
+        guard = 0
         while (selectedQuestions.size < dynamicVerbalTarget && guard < 80) {
             guard++
             val q = when(Random.nextInt(8)) {
@@ -591,7 +617,7 @@ object QuestionBank {
         // 3. 英语启蒙（少量起步），按题型加权避免重复
         var englishAdded = 0
         guard = 0
-        val englishMastery = loadEnglishMastery(prefs)
+        val englishMastery = loadMastery(prefs, KEY_ENGLISH_MASTERY)
         while (englishAdded < englishCount && selectedQuestions.size < count && guard < 50) {
             guard++
             val q = EnglishGenerator.generateWeighted(englishMastery)
@@ -608,7 +634,7 @@ object QuestionBank {
                 englishAdded++
             }
         }
-        saveEnglishMastery(prefs, englishMastery)
+        saveMastery(prefs, KEY_ENGLISH_MASTERY, englishMastery)
 
         // 4. 数学 — 难度决定“奥数/思维题 : 课内题”的比例
         //    基础档(1)以课内为主，挑战档(3)奥数思维题更多，随孩子水平走
@@ -1169,9 +1195,10 @@ object QuestionBank {
             val tip = if (!q.tip.isNullOrBlank()) "\n💡 ${q.tip}" else ""
             return "$label\n${q.text}\n✅ 答案：$ans$tip"
         }
-        return when (Random.nextInt(3)) {
+        return when (Random.nextInt(4)) {
             0 -> card("📖 语文积累", generateAcademicChineseQuestion())
             1 -> card("💡 巧算技巧", SmartCalcGenerator.generate())
+            2 -> card("📜 三上必背", Grade3Recitation.generate())
             else -> card("🧠 思维技巧", ThinkingMathGenerator.generate())
         }
     }
