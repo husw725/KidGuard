@@ -229,6 +229,20 @@ class FloatingService : Service() {
     }
     
     private fun setImmersive(immersive: Boolean) {
+        // Android 11+ 用 WindowInsetsController（旧 systemUiVisibility 在新系统上常失效，状态栏藏不掉）
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val c = floatingView.windowInsetsController
+            if (c != null) {
+                if (immersive) {
+                    c.systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    c.hide(android.view.WindowInsets.Type.statusBars() or android.view.WindowInsets.Type.navigationBars())
+                } else {
+                    c.show(android.view.WindowInsets.Type.statusBars() or android.view.WindowInsets.Type.navigationBars())
+                }
+                return
+            }
+        }
+        @Suppress("DEPRECATION")
         if (immersive) {
             floatingView.systemUiVisibility = (View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                     or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
@@ -350,7 +364,7 @@ class FloatingService : Service() {
         if (currentIndex >= currentQuestions.size) { finishQuiz(); return }
         val q = currentQuestions[currentIndex]
         tvProgressText.visibility = View.VISIBLE; quizProgressBar.visibility = View.VISIBLE  // 从“次数用完屏”切回时恢复
-        tvProgressText.text = "正在闯关：第 ${currentIndex + 1}/${currentQuestions.size} 题"
+        tvProgressText.text = "⭐ 第 ${currentIndex + 1}/${currentQuestions.size} 题"
         quizProgressBar.max = currentQuestions.size
         quizProgressBar.progress = currentIndex
 

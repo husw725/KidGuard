@@ -9,7 +9,7 @@
         android:id="@+id/lock_container"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#F0F2F5"
+        android:background="@drawable/bg_lock_screen"
         android:gravity="center"
         android:orientation="vertical"
         android:padding="20dp"
@@ -35,18 +35,19 @@
                 android:id="@+id/tv_progress_text"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="正在闯关：第 1/20 题"
-                android:textColor="#E0E0E0"
-                android:textSize="14sp" />
+                android:text="⭐ 第 1/20 题"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:textSize="15sp" />
 
             <ProgressBar
                 android:id="@+id/quiz_progress_bar"
                 style="?android:attr/progressBarStyleHorizontal"
                 android:layout_width="match_parent"
-                android:layout_height="8dp"
+                android:layout_height="10dp"
                 android:layout_marginTop="8dp"
                 android:layout_marginBottom="24dp"
-                android:progressDrawable="@android:drawable/progress_horizontal"
+                android:progressDrawable="@drawable/progress_quiz"
                 android:progress="0" />
 
             <!-- 家长消息横幅（飞书远程发来，默认隐藏）-->
@@ -55,11 +56,11 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="10dp"
-                android:background="@drawable/bg_quiz_card"
+                android:background="@drawable/bg_parent_msg"
                 android:padding="12dp"
                 android:gravity="center"
                 android:text=""
-                android:textColor="#FFF59D"
+                android:textColor="#FFFFFF"
                 android:textSize="18sp"
                 android:textStyle="bold"
                 android:visibility="gone" />
@@ -94,12 +95,12 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="20dp"
-                android:background="@drawable/btn_option_style"
+                android:background="@drawable/btn_ghost_pill"
                 android:paddingLeft="24dp"
                 android:paddingRight="24dp"
                 android:text="🔊 再听一次"
                 android:textAllCaps="false"
-                android:textColor="#333333"
+                android:textColor="#FFFFFF"
                 android:textSize="18sp"
                 android:visibility="gone" />
 
@@ -108,12 +109,12 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"
-                android:background="@drawable/btn_option_style"
+                android:background="@drawable/btn_ghost_pill"
                 android:paddingLeft="24dp"
                 android:paddingRight="24dp"
                 android:text="💡 想一想"
                 android:textAllCaps="false"
-                android:textColor="#333333"
+                android:textColor="#FFFFFF"
                 android:textSize="16sp"
                 android:visibility="gone" />
 
@@ -223,7 +224,7 @@
         android:id="@+id/result_container"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#F0F2F5"
+        android:background="@drawable/bg_lock_screen"
         android:gravity="center"
         android:orientation="vertical"
         android:padding="24dp"
@@ -254,7 +255,7 @@
                 android:layout_marginBottom="32dp"
                 android:gravity="center"
                 android:text="..."
-                android:textColor="#E0E0E0"
+                android:textColor="#FFFFFF"
                 android:textSize="18sp" />
 
             <Button
