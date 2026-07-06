@@ -496,7 +496,7 @@ class FloatingService : Service() {
         // 游戏化：音效 + 连击 + 动画 + 孵蛋进度
         toneGen?.startTone(if (isCorrect) android.media.ToneGenerator.TONE_PROP_ACK
             else android.media.ToneGenerator.TONE_PROP_NACK, 150)
-        val hatchMsg = if (isCorrect) GameState.addHatchProgress(this) else null
+        val hatchMsg = if (isCorrect) GameState.addBoxProgress(this) else null
         if (hatchMsg != null) handler.postDelayed({ toneGen?.startTone(android.media.ToneGenerator.TONE_PROP_ACK, 200) }, 250)
         if (isCorrect) {
             combo++; if (combo > maxCombo) maxCombo = combo
@@ -580,7 +580,7 @@ class FloatingService : Service() {
             val comboBonus = when { maxCombo >= 6 -> 2; maxCombo >= 3 -> 1; else -> 0 }
             val bossBonus = if (bossDefeated) 1 else 0
             val (chestText, chestMin, chestStars) = GameState.openChest()
-            val hatchMin = GameState.redeemHatchMinutes(this)
+            val hatchMin = GameState.redeemBoxMinutes(this)
             minutes += chestMin + hatchMin
             QuestionBank.recordUnlockEvent(this, minutes)
 
@@ -593,7 +593,7 @@ class FloatingService : Service() {
             if (bossDefeated) feats.add("⚔️ 击败大魔王")
             if (feats.isNotEmpty()) sb.append(feats.joinToString("　")).append("\n")
             sb.append("$chestText\n")
-            if (hatchMin > 0) sb.append("🥚 孵蛋奖励 +$hatchMin 分钟\n")
+            if (hatchMin > 0) sb.append("🎁 盲盒奖励 +$hatchMin 分钟\n")
             sb.append("$petLine\n奖励解锁: $minutes 分钟")
             tvResultTitle.text = passTitles.random(); tvResultTitle.setTextColor(android.graphics.Color.WHITE)
             tvResultDesc.text = sb.toString()

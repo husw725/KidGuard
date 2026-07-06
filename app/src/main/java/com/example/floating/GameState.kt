@@ -21,7 +21,8 @@ object GameState {
         }
     }
 
-    // ===== 孵蛋盲盒农场：答对攒孵化进度，满 15 孵出随机小动物（稀有度决定奖励分钟）=====
+    // ===== 盲盒农场：答对攒盲盒能量，满 15 开出随机小动物（稀有度决定奖励分钟）=====
+    // 注：prefs 键沿用最初"孵蛋"命名（HatchProgress 等），保留孩子已攒的进度
     private const val PET_PREFS = "PetPrefs"
     private const val KEY_HATCH_PROGRESS = "HatchProgress"
     private const val KEY_FARM_ANIMALS = "FarmAnimals"        // 逗号分隔的 emoji 序列
@@ -39,15 +40,15 @@ object GameState {
         Tier("传说", 20, listOf("🐉" to "神龙"))
     )
 
-    // 答对一题调用：+1 孵化进度；孵化时返回庆祝文案（含分钟奖励），否则 null
-    fun addHatchProgress(context: Context): String? {
+    // 答对一题调用：+1 盲盒能量；攒满开盒时返回庆祝文案（含分钟奖励），否则 null
+    fun addBoxProgress(context: Context): String? {
         val p = context.getSharedPreferences(PET_PREFS, Context.MODE_PRIVATE)
         val prog = p.getInt(KEY_HATCH_PROGRESS, 0) + 1
         if (prog < HATCH_TARGET) {
             p.edit().putInt(KEY_HATCH_PROGRESS, prog).apply()
             return null
         }
-        // 孵化！按稀有度抽卡
+        // 开盲盒！按稀有度抽卡
         val r = Random.nextInt(100)
         val tier = when { r < 60 -> tiers[0]; r < 90 -> tiers[1]; r < 99 -> tiers[2]; else -> tiers[3] }
         val (emoji, name) = tier.animals.random()
@@ -58,15 +59,15 @@ object GameState {
             .putInt(KEY_PENDING_HATCH_MIN, p.getInt(KEY_PENDING_HATCH_MIN, 0) + tier.minutes)
             .apply()
         return when (tier.label) {
-            "普通" -> "🎉 蛋壳裂开了……是 $emoji $name！+${tier.minutes} 分钟"
-            "稀有" -> "✨ 哇！稀有的 $emoji $name！+${tier.minutes} 分钟"
-            "史诗" -> "💫💫 史诗级 $emoji $name！！+${tier.minutes} 分钟"
-            else -> "🌈🌈🌈 传说中的 $emoji ${name}降临！！！+${tier.minutes} 分钟"
+            "普通" -> "🎁 盲盒打开了……是 $emoji $name！+${tier.minutes} 分钟"
+            "稀有" -> "✨ 哇！稀有款 $emoji $name！+${tier.minutes} 分钟"
+            "史诗" -> "💫💫 史诗款 $emoji $name！！+${tier.minutes} 分钟"
+            else -> "🌈🌈🌈 隐藏款 $emoji $name！！！+${tier.minutes} 分钟"
         }
     }
 
-    // 通关时取出攒下的孵蛋奖励分钟并清零
-    fun redeemHatchMinutes(context: Context): Int {
+    // 通关时取出攒下的盲盒奖励分钟并清零
+    fun redeemBoxMinutes(context: Context): Int {
         val p = context.getSharedPreferences(PET_PREFS, Context.MODE_PRIVATE)
         val m = p.getInt(KEY_PENDING_HATCH_MIN, 0)
         if (m > 0) p.edit().putInt(KEY_PENDING_HATCH_MIN, 0).apply()
@@ -81,14 +82,14 @@ object GameState {
         val stars = QuestionBank.getStars(context)
         val filled = prog * 5 / HATCH_TARGET
         val bar = "▓".repeat(filled) + "░".repeat(5 - filled)
-        return "${petFor(stars).first} ⭐$stars　🏡×$farmCount　孵蛋 $bar $prog/$HATCH_TARGET"
+        return "${petFor(stars).first} ⭐$stars　🏡×$farmCount　🎁 盲盒 $bar $prog/$HATCH_TARGET"
     }
 
     // 农场页：emoji 墙 + 收集统计
     fun farmText(context: Context): String {
         val p = context.getSharedPreferences(PET_PREFS, Context.MODE_PRIVATE)
         val animals = farmList(p)
-        if (animals.isEmpty()) return "🏡 我的农场\n\n还空着呢～答对题攒满孵化进度，\n蛋里会孵出神秘小伙伴哦！"
+        if (animals.isEmpty()) return "🏡 我的农场\n\n还空着呢～答对题攒满盲盒能量，\n就能开出神秘小伙伴哦！"
         val byTier = tiers.map { t -> t to animals.count { a -> t.animals.any { it.first == a } } }
         val stats = byTier.filter { it.second > 0 && it.first.label != "普通" }
             .joinToString("　") { "${it.first.label} x${it.second}" }
