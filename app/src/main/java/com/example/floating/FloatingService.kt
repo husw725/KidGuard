@@ -76,8 +76,10 @@ class FloatingService : Service() {
     private var maxCombo = 0
     private var bossDefeated = false
     private var toneGen: android.media.ToneGenerator? = null
-    private var galleryShowing = false
+    private var resultView = 0   // 结算页当前显示：0 结算文字 / 1 图鉴 / 2 农场
     private var savedResultDesc: CharSequence = ""
+    private lateinit var tvPetStatus: TextView
+    private lateinit var btnFarm: Button
 
     // 飞书远程：家长消息横幅 + 快捷回复 + 锁屏期间轮询
     private lateinit var tvParentMsg: TextView
@@ -292,17 +294,12 @@ class FloatingService : Service() {
         btnReplayAudio.setOnClickListener { playCurrentWord() }
         btnHelp.setOnClickListener { showHelp() }
 
-        // 图鉴：在结果页把说明文字切换成收集图鉴，再点切回
+        // 图鉴 / 农场：结果页说明文字三态切换（结算 ↔ 图鉴 ↔ 农场）
+        tvPetStatus = floatingView.findViewById(R.id.tv_pet_status)
         btnGallery = floatingView.findViewById(R.id.btn_gallery)
-        btnGallery.setOnClickListener {
-            if (galleryShowing) {
-                tvResultDesc.text = savedResultDesc; btnGallery.text = "📖 我的图鉴"
-            } else {
-                savedResultDesc = tvResultDesc.text
-                tvResultDesc.text = GameState.galleryText(this); btnGallery.text = "↩️ 返回"
-            }
-            galleryShowing = !galleryShowing
-        }
+        btnFarm = floatingView.findViewById(R.id.btn_farm)
+        btnGallery.setOnClickListener { switchResultView(if (resultView == 1) 0 else 1) }
+        btnFarm.setOnClickListener { switchResultView(if (resultView == 2) 0 else 2) }
 
         inputPad = floatingView.findViewById(R.id.input_pad)
         tvInputDisplay = floatingView.findViewById(R.id.tv_input_display)
@@ -328,6 +325,19 @@ class FloatingService : Service() {
         }
         tvQuestion.setOnClickListener(superAdminTap)
         tvResultTitle.setOnClickListener(superAdminTap)
+    }
+
+    // 结果页三态切换：0 结算文字 / 1 图鉴 / 2 农场
+    private fun switchResultView(target: Int) {
+        if (resultView == 0 && target != 0) savedResultDesc = tvResultDesc.text
+        resultView = target
+        tvResultDesc.text = when (target) {
+            1 -> GameState.galleryText(this)
+            2 -> GameState.farmText(this)
+            else -> savedResultDesc
+        }
+        btnGallery.text = if (target == 1) "↩️ 返回" else "📖 我的图鉴"
+        btnFarm.text = if (target == 2) "↩️ 返回" else "🏡 我的农场"
     }
 
     private fun handleSuperAdminUnlock() {
@@ -387,6 +397,8 @@ class FloatingService : Service() {
         if (currentIndex >= currentQuestions.size) { finishQuiz(); return }
         val q = currentQuestions[currentIndex]
         tvProgressText.visibility = View.VISIBLE; quizProgressBar.visibility = View.VISIBLE  // 从“次数用完屏”切回时恢复
+        tvPetStatus.visibility = View.VISIBLE
+        tvPetStatus.text = GameState.statusLine(this)
         tvProgressText.text = "⭐ 第 ${currentIndex + 1}/${currentQuestions.size} 题"
         quizProgressBar.max = currentQuestions.size
         quizProgressBar.progress = currentIndex
@@ -481,9 +493,11 @@ class FloatingService : Service() {
         QuestionBank.updateDifficulty(this, isCorrect)   // 答题表现驱动难度自适应
         q.masteryKey?.let { QuestionBank.recordRecitationResult(this, it, isCorrect) }  // 必背内容掌握度（答错回教学卡）
 
-        // 游戏化：音效 + 连击 + 动画
+        // 游戏化：音效 + 连击 + 动画 + 孵蛋进度
         toneGen?.startTone(if (isCorrect) android.media.ToneGenerator.TONE_PROP_ACK
             else android.media.ToneGenerator.TONE_PROP_NACK, 150)
+        val hatchMsg = if (isCorrect) GameState.addHatchProgress(this) else null
+        if (hatchMsg != null) handler.postDelayed({ toneGen?.startTone(android.media.ToneGenerator.TONE_PROP_ACK, 200) }, 250)
         if (isCorrect) {
             combo++; if (combo > maxCombo) maxCombo = combo
             if (currentIndex == currentQuestions.size - 1) bossDefeated = true
@@ -503,22 +517,26 @@ class FloatingService : Service() {
             // 英语听音选图：答完显示“图 + 单词拼写”并复读一遍（音—形—义再连一次），更新逐词掌握度
             QuestionBank.recordEnglishResult(this, q.audioWord!!, isCorrect)
             val emoji = q.options[q.correctIndex]
-            tvFeedback.text = if (isCorrect) "真棒！$emoji ${q.audioWord}" else "正确答案：$emoji ${q.audioWord}"
+            var fb = if (isCorrect) "真棒！$emoji ${q.audioWord}" else "正确答案：$emoji ${q.audioWord}"
+            if (hatchMsg != null) fb += "\n$hatchMsg"
+            tvFeedback.text = fb
             tvFeedback.setTextColor(android.graphics.Color.parseColor(if (isCorrect) "#4CAF50" else "#FF5252"))
             handler.postDelayed({ playCurrentWord() }, 300)
-            handler.postDelayed({ currentIndex++; saveState(); showCurrentQuestion() }, 1800)
+            handler.postDelayed({ currentIndex++; saveState(); showCurrentQuestion() }, if (hatchMsg != null) 2800L else 1800L)
         } else if (isCorrect) {
             tvFeedback.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
             val isBoss = currentIndex == currentQuestions.size - 1
             var praise = if (isBoss) "⚔️ 你打败了大魔王！" else praiseMessages.random()
             if (combo >= 2) praise += "　🔥 连击 x$combo"
+            if (hatchMsg != null) praise += "\n$hatchMsg"
             if (q.masteryKey != null && q.tip != null) {
                 // 必背新内容：答对也复看一遍解析，强化记忆（其余题保持快节奏）
                 tvFeedback.text = "$praise\n💡 ${q.tip}"
-                handler.postDelayed({ currentIndex++; saveState(); showCurrentQuestion() }, 2600)
+                handler.postDelayed({ currentIndex++; saveState(); showCurrentQuestion() }, if (hatchMsg != null) 3000L else 2600L)
             } else {
                 tvFeedback.text = praise
-                handler.postDelayed({ currentIndex++; saveState(); showCurrentQuestion() }, if (isBoss) 1200L else 600L)
+                val delay = when { hatchMsg != null -> 2500L; isBoss -> 1200L; else -> 600L }
+                handler.postDelayed({ currentIndex++; saveState(); showCurrentQuestion() }, delay)
             }
         } else {
             val correctText = if (q.inputAnswer != null) q.inputAnswer
@@ -533,7 +551,7 @@ class FloatingService : Service() {
 
     private fun finishQuiz() {
         getSharedPreferences(PREFS_STATE, Context.MODE_PRIVATE).edit().clear().apply()
-        galleryShowing = false; btnGallery.text = "📖 我的图鉴"
+        resultView = 0; btnGallery.text = "📖 我的图鉴"; btnFarm.text = "🏡 我的农场"
         lockContainer.visibility = View.GONE; timerContainer.visibility = View.GONE; resultContainer.visibility = View.VISIBLE
         updateParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, 0, 0)
         
@@ -558,11 +576,12 @@ class FloatingService : Service() {
                 minutes = maxOf(5, minutes / 3)   // 夜间时长收窄但不至于太挫败（⑤ 降焦虑）
             }
 
-            // 游戏化结算：连击/BOSS 奖星 + 宝箱随机奖励（分钟直接加进解锁时长）
+            // 游戏化结算：连击/BOSS 奖星 + 宝箱随机奖励 + 孵蛋攒的分钟（都计入解锁时长）
             val comboBonus = when { maxCombo >= 6 -> 2; maxCombo >= 3 -> 1; else -> 0 }
             val bossBonus = if (bossDefeated) 1 else 0
             val (chestText, chestMin, chestStars) = GameState.openChest()
-            minutes += chestMin
+            val hatchMin = GameState.redeemHatchMinutes(this)
+            minutes += chestMin + hatchMin
             QuestionBank.recordUnlockEvent(this, minutes)
 
             val bonus = comboBonus + bossBonus + chestStars
@@ -573,7 +592,9 @@ class FloatingService : Service() {
             if (maxCombo >= 2) feats.add("🔥 最高连击 x$maxCombo")
             if (bossDefeated) feats.add("⚔️ 击败大魔王")
             if (feats.isNotEmpty()) sb.append(feats.joinToString("　")).append("\n")
-            sb.append("$chestText\n$petLine\n奖励解锁: $minutes 分钟")
+            sb.append("$chestText\n")
+            if (hatchMin > 0) sb.append("🥚 孵蛋奖励 +$hatchMin 分钟\n")
+            sb.append("$petLine\n奖励解锁: $minutes 分钟")
             tvResultTitle.text = passTitles.random(); tvResultTitle.setTextColor(android.graphics.Color.WHITE)
             tvResultDesc.text = sb.toString()
             btnRetry.visibility = View.GONE; handler.postDelayed({ unlockScreen(minutes * 60 * 1000L) }, 5000)
@@ -724,11 +745,12 @@ class FloatingService : Service() {
         // 隐藏答题相关视图，只留标题/消息/快捷回复
         tvProgressText.visibility = View.GONE
         quizProgressBar.visibility = View.GONE
+        tvPetStatus.visibility = View.GONE
         btnReplayAudio.visibility = View.GONE
         inputPad.visibility = View.GONE
         listOf(btnAns1, btnAns2, btnAns3, btnAns4).forEach { it.visibility = View.GONE }
         tvFeedback.visibility = View.INVISIBLE
-        tvQuestion.text = "今天的解锁次数用完啦 🔒\n已解锁 ${QuestionBank.getDailyUnlockLimit(this)} 次，明天再来吧！想继续请爸爸妈妈远程解锁。\n\n顺便学一个 👇\n${QuestionBank.getTeachingCard()}"
+        tvQuestion.text = "今天的解锁次数用完啦 🔒\n已解锁 ${QuestionBank.getDailyUnlockLimit(this)} 次，明天再来吧！想继续请爸爸妈妈远程解锁。\n\n顺便学一个 👇\n${QuestionBank.getTeachingCard()}\n\n${GameState.statusLine(this)}"
         tvQuestion.textSize = 17f
     }
 

@@ -46,9 +46,20 @@
                 android:layout_width="match_parent"
                 android:layout_height="10dp"
                 android:layout_marginTop="8dp"
-                android:layout_marginBottom="24dp"
+                android:layout_marginBottom="8dp"
                 android:progressDrawable="@drawable/progress_quiz"
                 android:progress="0" />
+
+            <!-- 鸡妈妈 + 星星 + 孵蛋进度状态行 -->
+            <TextView
+                android:id="@+id/tv_pet_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                android:singleLine="true"
+                android:text=""
+                android:textColor="#F2FFFFFF"
+                android:textSize="13sp" />
 
             <!-- 家长消息横幅（飞书远程发来，默认隐藏）-->
             <TextView
@@ -273,18 +284,37 @@
                 android:textSize="18sp"
                 android:textStyle="bold" />
 
-            <Button
-                android:id="@+id/btn_gallery"
+            <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
-                android:background="@drawable/btn_ghost_pill"
-                android:paddingLeft="24dp"
-                android:paddingRight="24dp"
-                android:text="📖 我的图鉴"
-                android:textAllCaps="false"
-                android:textColor="#FFFFFF"
-                android:textSize="16sp" />
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btn_gallery"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginRight="8dp"
+                    android:background="@drawable/btn_ghost_pill"
+                    android:paddingLeft="20dp"
+                    android:paddingRight="20dp"
+                    android:text="📖 我的图鉴"
+                    android:textAllCaps="false"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+
+                <Button
+                    android:id="@+id/btn_farm"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/btn_ghost_pill"
+                    android:paddingLeft="20dp"
+                    android:paddingRight="20dp"
+                    android:text="🏡 我的农场"
+                    android:textAllCaps="false"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+            </LinearLayout>
         </LinearLayout>
         </ScrollView>
     </LinearLayout>
