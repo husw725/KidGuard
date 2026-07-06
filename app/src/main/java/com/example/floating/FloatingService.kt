@@ -80,6 +80,9 @@ class FloatingService : Service() {
     private var savedResultDesc: CharSequence = ""
     private lateinit var tvPetStatus: TextView
     private lateinit var btnFarm: Button
+    private lateinit var tvBox: TextView
+    private var boxIdleAnim: android.animation.ObjectAnimator? = null
+    private var boxOpening = false
 
     // 飞书远程：家长消息横幅 + 快捷回复 + 锁屏期间轮询
     private lateinit var tvParentMsg: TextView
@@ -301,6 +304,9 @@ class FloatingService : Service() {
         btnGallery.setOnClickListener { switchResultView(if (resultView == 1) 0 else 1) }
         btnFarm.setOnClickListener { switchResultView(if (resultView == 2) 0 else 2) }
 
+        tvBox = floatingView.findViewById(R.id.tv_box)
+        tvBox.setOnClickListener { openBoxWithAnimation() }
+
         inputPad = floatingView.findViewById(R.id.input_pad)
         tvInputDisplay = floatingView.findViewById(R.id.tv_input_display)
         for (d in 0..9) {
@@ -395,6 +401,8 @@ class FloatingService : Service() {
 
     private fun showCurrentQuestion() {
         if (currentIndex >= currentQuestions.size) { finishQuiz(); return }
+        if (GameState.hasPendingBox(this)) { showBoxScreen(); return }   // 有待开的盲盒：先开盒再继续
+        tvBox.visibility = View.GONE
         val q = currentQuestions[currentIndex]
         tvProgressText.visibility = View.VISIBLE; quizProgressBar.visibility = View.VISIBLE  // 从“次数用完屏”切回时恢复
         tvPetStatus.visibility = View.VISIBLE
@@ -455,6 +463,55 @@ class FloatingService : Service() {
         handleAnswer(q, idx == q.correctIndex)
     }
 
+    // ===== 盲盒开箱仪式：攒满后弹出盒子 → 点它 → 旋转揭晓 → 展示奖励 =====
+    private fun showBoxScreen() {
+        locked = true; boxOpening = false
+        tvPetStatus.visibility = View.VISIBLE
+        tvPetStatus.text = GameState.statusLine(this)
+        tvQuestion.textSize = 26f
+        tvQuestion.text = "🎉 盲盒能量攒满啦！"
+        listOf(btnAns1, btnAns2, btnAns3, btnAns4).forEach { it.visibility = View.GONE }
+        inputPad.visibility = View.GONE; btnHelp.visibility = View.GONE; btnReplayAudio.visibility = View.GONE
+        tvFeedback.visibility = View.VISIBLE
+        tvFeedback.text = "👇 点一点盒子，看看开出什么！"
+        tvFeedback.setTextColor(android.graphics.Color.WHITE)
+        tvBox.text = "🎁"
+        tvBox.rotation = 0f; tvBox.scaleX = 1f; tvBox.scaleY = 1f
+        tvBox.visibility = View.VISIBLE
+        // 待开时左右摇晃，勾着她来点
+        boxIdleAnim?.cancel()
+        boxIdleAnim = android.animation.ObjectAnimator.ofFloat(tvBox, "rotation", -12f, 12f).apply {
+            duration = 320; repeatMode = android.animation.ValueAnimator.REVERSE
+            repeatCount = android.animation.ValueAnimator.INFINITE; start()
+        }
+    }
+
+    private fun openBoxWithAnimation() {
+        if (boxOpening || !GameState.hasPendingBox(this)) return
+        boxOpening = true
+        boxIdleAnim?.cancel()
+        toneGen?.startTone(android.media.ToneGenerator.TONE_PROP_ACK, 120)
+        // 开盒动效：高速旋转 + 放大，落定后揭晓
+        tvBox.animate().rotationBy(720f).scaleX(1.6f).scaleY(1.6f).setDuration(700)
+            .setInterpolator(android.view.animation.AccelerateInterpolator())
+            .withEndAction {
+                val (emoji, title, minutes) = GameState.openBox(this)
+                tvBox.rotation = 0f
+                tvBox.text = emoji
+                tvBox.scaleX = 0.3f; tvBox.scaleY = 0.3f
+                tvBox.animate().scaleX(1.6f).scaleY(1.6f).setDuration(450)
+                    .setInterpolator(android.view.animation.OvershootInterpolator()).start()
+                tvFeedback.text = "$title\n⏱ 奖励 +$minutes 分钟（通关后到账）"
+                toneGen?.startTone(android.media.ToneGenerator.TONE_PROP_ACK, 200)
+                handler.postDelayed({ toneGen?.startTone(android.media.ToneGenerator.TONE_PROP_ACK, 200) }, 260)
+                // 停留欣赏，然后回到答题（若还有盒子会再次弹出）
+                handler.postDelayed({
+                    tvBox.scaleX = 1f; tvBox.scaleY = 1f
+                    showCurrentQuestion()
+                }, 3200)
+            }.start()
+    }
+
     // 求助：只显示解题思路，不给答案、不判对错、不锁定，孩子想清楚后照常作答
     private fun showHelp() {
         if (locked || currentIndex >= currentQuestions.size) return
@@ -496,8 +553,8 @@ class FloatingService : Service() {
         // 游戏化：音效 + 连击 + 动画 + 孵蛋进度
         toneGen?.startTone(if (isCorrect) android.media.ToneGenerator.TONE_PROP_ACK
             else android.media.ToneGenerator.TONE_PROP_NACK, 150)
-        val hatchMsg = if (isCorrect) GameState.addBoxProgress(this) else null
-        if (hatchMsg != null) handler.postDelayed({ toneGen?.startTone(android.media.ToneGenerator.TONE_PROP_ACK, 200) }, 250)
+        val boxReady = isCorrect && GameState.addBoxProgress(this)
+        if (boxReady) handler.postDelayed({ toneGen?.startTone(android.media.ToneGenerator.TONE_PROP_ACK, 200) }, 250)
         if (isCorrect) {
             combo++; if (combo > maxCombo) maxCombo = combo
             if (currentIndex == currentQuestions.size - 1) bossDefeated = true
@@ -518,24 +575,24 @@ class FloatingService : Service() {
             QuestionBank.recordEnglishResult(this, q.audioWord!!, isCorrect)
             val emoji = q.options[q.correctIndex]
             var fb = if (isCorrect) "真棒！$emoji ${q.audioWord}" else "正确答案：$emoji ${q.audioWord}"
-            if (hatchMsg != null) fb += "\n$hatchMsg"
+            if (boxReady) fb += "\n🎁 盲盒能量攒满啦！"
             tvFeedback.text = fb
             tvFeedback.setTextColor(android.graphics.Color.parseColor(if (isCorrect) "#4CAF50" else "#FF5252"))
             handler.postDelayed({ playCurrentWord() }, 300)
-            handler.postDelayed({ currentIndex++; saveState(); showCurrentQuestion() }, if (hatchMsg != null) 2800L else 1800L)
+            handler.postDelayed({ currentIndex++; saveState(); showCurrentQuestion() }, 1800)
         } else if (isCorrect) {
             tvFeedback.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
             val isBoss = currentIndex == currentQuestions.size - 1
             var praise = if (isBoss) "⚔️ 你打败了大魔王！" else praiseMessages.random()
             if (combo >= 2) praise += "　🔥 连击 x$combo"
-            if (hatchMsg != null) praise += "\n$hatchMsg"
+            if (boxReady) praise += "\n🎁 盲盒能量攒满啦！"
             if (q.masteryKey != null && q.tip != null) {
                 // 必背新内容：答对也复看一遍解析，强化记忆（其余题保持快节奏）
                 tvFeedback.text = "$praise\n💡 ${q.tip}"
-                handler.postDelayed({ currentIndex++; saveState(); showCurrentQuestion() }, if (hatchMsg != null) 3000L else 2600L)
+                handler.postDelayed({ currentIndex++; saveState(); showCurrentQuestion() }, 2600)
             } else {
                 tvFeedback.text = praise
-                val delay = when { hatchMsg != null -> 2500L; isBoss -> 1200L; else -> 600L }
+                val delay = when { boxReady -> 1200L; isBoss -> 1200L; else -> 600L }
                 handler.postDelayed({ currentIndex++; saveState(); showCurrentQuestion() }, delay)
             }
         } else {
@@ -746,6 +803,7 @@ class FloatingService : Service() {
         tvProgressText.visibility = View.GONE
         quizProgressBar.visibility = View.GONE
         tvPetStatus.visibility = View.GONE
+        tvBox.visibility = View.GONE; boxIdleAnim?.cancel()
         btnReplayAudio.visibility = View.GONE
         inputPad.visibility = View.GONE
         listOf(btnAns1, btnAns2, btnAns3, btnAns4).forEach { it.visibility = View.GONE }
@@ -788,6 +846,7 @@ class FloatingService : Service() {
         audioPlayer = null
         try { toneGen?.release() } catch (e: Exception) {}
         toneGen = null
+        boxIdleAnim?.cancel()
         if (::floatingView.isInitialized) try { windowManager.removeView(floatingView) } catch (e: Exception) {}
         scheduleRestart()
     }

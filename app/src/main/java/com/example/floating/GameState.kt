@@ -40,30 +40,45 @@ object GameState {
         Tier("传说", 20, listOf("🐉" to "神龙"))
     )
 
-    // 答对一题调用：+1 盲盒能量；攒满开盒时返回庆祝文案（含分钟奖励），否则 null
-    fun addBoxProgress(context: Context): String? {
+    private const val KEY_PENDING_BOXES = "PendingBoxes"   // 攒满但还没点开的盒子数
+
+    // 答对一题调用：+1 盲盒能量；攒满时出一个待开的盒子（点击才开），返回是否刚攒满
+    fun addBoxProgress(context: Context): Boolean {
         val p = context.getSharedPreferences(PET_PREFS, Context.MODE_PRIVATE)
         val prog = p.getInt(KEY_HATCH_PROGRESS, 0) + 1
         if (prog < HATCH_TARGET) {
             p.edit().putInt(KEY_HATCH_PROGRESS, prog).apply()
-            return null
+            return false
         }
-        // 开盲盒！按稀有度抽卡
+        p.edit()
+            .putInt(KEY_HATCH_PROGRESS, 0)
+            .putInt(KEY_PENDING_BOXES, p.getInt(KEY_PENDING_BOXES, 0) + 1)
+            .apply()
+        return true
+    }
+
+    fun hasPendingBox(context: Context): Boolean =
+        context.getSharedPreferences(PET_PREFS, Context.MODE_PRIVATE).getInt(KEY_PENDING_BOXES, 0) > 0
+
+    // 点开盒子：抽稀有度与小动物，入农场、分钟入账；返回（动物emoji, 揭晓文案, 奖励分钟）
+    fun openBox(context: Context): Triple<String, String, Int> {
+        val p = context.getSharedPreferences(PET_PREFS, Context.MODE_PRIVATE)
         val r = Random.nextInt(100)
         val tier = when { r < 60 -> tiers[0]; r < 90 -> tiers[1]; r < 99 -> tiers[2]; else -> tiers[3] }
         val (emoji, name) = tier.animals.random()
         val farm = p.getString(KEY_FARM_ANIMALS, "") ?: ""
         p.edit()
-            .putInt(KEY_HATCH_PROGRESS, 0)
+            .putInt(KEY_PENDING_BOXES, maxOf(0, p.getInt(KEY_PENDING_BOXES, 0) - 1))
             .putString(KEY_FARM_ANIMALS, if (farm.isEmpty()) emoji else "$farm,$emoji")
             .putInt(KEY_PENDING_HATCH_MIN, p.getInt(KEY_PENDING_HATCH_MIN, 0) + tier.minutes)
             .apply()
-        return when (tier.label) {
-            "普通" -> "🎁 盲盒打开了……是 $emoji $name！+${tier.minutes} 分钟"
-            "稀有" -> "✨ 哇！稀有款 $emoji $name！+${tier.minutes} 分钟"
-            "史诗" -> "💫💫 史诗款 $emoji $name！！+${tier.minutes} 分钟"
-            else -> "🌈🌈🌈 隐藏款 $emoji $name！！！+${tier.minutes} 分钟"
+        val title = when (tier.label) {
+            "普通" -> "🎉 是 $name！"
+            "稀有" -> "✨ 哇！稀有款 $name！"
+            "史诗" -> "💫💫 史诗款 $name！！"
+            else -> "🌈🌈🌈 隐藏款 $name！！！"
         }
+        return Triple(emoji, title, tier.minutes)
     }
 
     // 通关时取出攒下的盲盒奖励分钟并清零
