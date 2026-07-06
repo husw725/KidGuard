@@ -282,10 +282,10 @@ class FloatingService : Service() {
         listOf(R.id.btn_qr_1 to "好的👌", R.id.btn_qr_2 to "知道啦", R.id.btn_qr_3 to "想你了❤️", R.id.btn_qr_4 to "等下就好")
             .forEach { (id, label) -> floatingView.findViewById<Button>(id).setOnClickListener { sendQuickReply(label) } }
 
-        // 1 秒内连点 5 次触发超管应急解锁；题目文字和结果标题（次数用完屏）都挂同一个入口
+        // 连点 5 次触发超管应急解锁（相邻两次间隔不超 2 秒，家长从容点也能触发）；题目文字和结果标题都挂同一入口
         val superAdminTap = View.OnClickListener {
             val now = System.currentTimeMillis()
-            if (now - lastQuestionClickTime > 1000) questionClickCount = 0
+            if (now - lastQuestionClickTime > 2000) questionClickCount = 0
             questionClickCount++
             lastQuestionClickTime = now
             if (questionClickCount >= 5) { questionClickCount = 0; handleSuperAdminUnlock() }
@@ -363,6 +363,8 @@ class FloatingService : Service() {
         } else {
             tvQuestion.text = q.text
         }
+        // 长题目（古诗教学卡/阅读段落）缩小字号，避免把选项挤出屏幕
+        tvQuestion.textSize = if (q.text.length > 60) 17f else 26f
         btnReplayAudio.visibility = if (isAudio) View.VISIBLE else View.GONE
         // 有思路可讲（tip 非空）才显示求助按钮；语文认读/英语听音题多数无 tip，自然不显示
         btnHelp.visibility = if (q.tip != null) View.VISIBLE else View.GONE
@@ -651,6 +653,7 @@ class FloatingService : Service() {
         listOf(btnAns1, btnAns2, btnAns3, btnAns4).forEach { it.visibility = View.GONE }
         tvFeedback.visibility = View.INVISIBLE
         tvQuestion.text = "今天的解锁次数用完啦 🔒\n已解锁 ${QuestionBank.getDailyUnlockLimit(this)} 次，明天再来吧！想继续请爸爸妈妈远程解锁。\n\n顺便学一个 👇\n${QuestionBank.getTeachingCard()}"
+        tvQuestion.textSize = 17f
     }
 
     private fun showParentMessage(text: String) {

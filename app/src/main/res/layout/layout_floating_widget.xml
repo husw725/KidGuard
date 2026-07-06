@@ -15,6 +15,13 @@
         android:padding="20dp"
         android:visibility="visible">
 
+        <!-- 长题目（如古诗教学卡）超出屏幕时整卡可滚动 -->
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fillViewport="true"
+            android:scrollbars="none">
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -208,6 +215,7 @@
                 android:textStyle="bold"
                 android:visibility="invisible" />
         </LinearLayout>
+        </ScrollView>
     </LinearLayout>
 
     <!-- 结果界面 (复用美化风格) -->
