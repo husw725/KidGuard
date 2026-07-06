@@ -124,8 +124,8 @@ object QuestionBank {
         return c.get(Calendar.YEAR) * 10000 + (c.get(Calendar.MONTH) + 1) * 100 + c.get(Calendar.DAY_OF_MONTH)
     }
 
-    // 通关时调用：更新连续天数与星星，返回 (连续天数, 总星星)
-    fun recordPass(context: Context): Pair<Int, Int> {
+    // 通关时调用：更新连续天数与星星（1 + 连击/BOSS/宝箱的额外星），返回 (连续天数, 总星星)
+    fun recordPass(context: Context, bonusStars: Int = 0): Pair<Int, Int> {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val today = dayKey()
         val lastDate = prefs.getInt(KEY_STREAK_DATE, 0)
@@ -133,10 +133,13 @@ object QuestionBank {
         if (lastDate != today) {                       // 同一天多次通关只算一天
             streak = if (lastDate == dayKey(-1)) streak + 1 else 1
         }
-        val stars = prefs.getInt(KEY_STARS, 0) + 1
+        val stars = prefs.getInt(KEY_STARS, 0) + 1 + bonusStars
         prefs.edit().putInt(KEY_STREAK, streak).putInt(KEY_STREAK_DATE, today).putInt(KEY_STARS, stars).apply()
         return Pair(streak, stars)
     }
+
+    fun getStars(context: Context): Int =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getInt(KEY_STARS, 0)
 
     // ===== ④ 家长辅导依据：薄弱点（按数学题型错误次数取前 2）=====
     fun getWeakPointsText(context: Context): String? {
@@ -195,6 +198,15 @@ object QuestionBank {
         m[word] = if (isCorrect) (m[word] ?: 0) + 1 else 0
         saveMastery(prefs, KEY_ENGLISH_MASTERY, m)
     }
+
+    // 图鉴用只读快照：掌握度 >=3 视为已点亮
+    fun getMasteredEnglish(context: Context): Set<String> =
+        loadMastery(context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE), KEY_ENGLISH_MASTERY)
+            .filterValues { it >= 3 }.keys
+
+    fun getMasteredRecitation(context: Context): Set<String> =
+        loadMastery(context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE), KEY_RECITATION_MASTERY)
+            .filterValues { it >= 3 }.keys
 
     // 三上必背掌握度：答对 +1，答错清零（清零后下次回到教学卡重新教）
     fun recordRecitationResult(context: Context, key: String, isCorrect: Boolean) {

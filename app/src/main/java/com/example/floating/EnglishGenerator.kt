@@ -37,6 +37,9 @@ object EnglishGenerator {
         pictureVocab.flatMapIndexed { ci, cat -> cat.map { Word(it.first, it.second, ci) } }
     }
 
+    // 图鉴用：全部 单词 -> emoji
+    val vocabulary: List<Pair<String, String>> get() = allWords.map { it.en to it.emoji }
+
     // 英文 -> 中文词义（求助按钮用；零基础启蒙直接教她音—义联系）
     private val zhMeaning = mapOf(
         "cat" to "小猫", "dog" to "小狗", "pig" to "小猪", "duck" to "鸭子", "bird" to "小鸟",

@@ -230,6 +230,11 @@
         android:padding="24dp"
         android:visibility="gone">
 
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none">
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -267,7 +272,21 @@
                 android:textColor="#333333"
                 android:textSize="18sp"
                 android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btn_gallery"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/btn_ghost_pill"
+                android:paddingLeft="24dp"
+                android:paddingRight="24dp"
+                android:text="📖 我的图鉴"
+                android:textAllCaps="false"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp" />
         </LinearLayout>
+        </ScrollView>
     </LinearLayout>
 
     <!-- 悬浮窗倒计时界面 -->

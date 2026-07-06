@@ -56,6 +56,7 @@ class FloatingService : Service() {
     private lateinit var tvResultTitle: TextView
     private lateinit var tvResultDesc: TextView
     private lateinit var btnRetry: Button
+    private lateinit var btnGallery: Button
     private lateinit var tvTimer: TextView
     private lateinit var btnReplayAudio: Button
     private lateinit var btnHelp: Button
@@ -69,6 +70,14 @@ class FloatingService : Service() {
     // 手输得数题（③）
     private var inputBuffer = ""
     private var locked = false   // 答题后到下一题之间锁住输入，防重复作答
+
+    // 游戏化：局内连击 / BOSS 战 / 音效 / 图鉴切换
+    private var combo = 0
+    private var maxCombo = 0
+    private var bossDefeated = false
+    private var toneGen: android.media.ToneGenerator? = null
+    private var galleryShowing = false
+    private var savedResultDesc: CharSequence = ""
 
     // 飞书远程：家长消息横幅 + 快捷回复 + 锁屏期间轮询
     private lateinit var tvParentMsg: TextView
@@ -201,6 +210,7 @@ class FloatingService : Service() {
         }
 
         windowManager.addView(floatingView, params)
+        toneGen = try { android.media.ToneGenerator(AudioManager.STREAM_MUSIC, 70) } catch (e: Exception) { null }
         QuestionBank.maybeResetOnUpgrade(this, BuildConfig.VERSION_CODE)  // 更新/重装后今日次数清零
         restoreOrStartQuiz()
         ReportScheduler.scheduleDailyReport(this)
@@ -282,6 +292,18 @@ class FloatingService : Service() {
         btnReplayAudio.setOnClickListener { playCurrentWord() }
         btnHelp.setOnClickListener { showHelp() }
 
+        // 图鉴：在结果页把说明文字切换成收集图鉴，再点切回
+        btnGallery = floatingView.findViewById(R.id.btn_gallery)
+        btnGallery.setOnClickListener {
+            if (galleryShowing) {
+                tvResultDesc.text = savedResultDesc; btnGallery.text = "📖 我的图鉴"
+            } else {
+                savedResultDesc = tvResultDesc.text
+                tvResultDesc.text = GameState.galleryText(this); btnGallery.text = "↩️ 返回"
+            }
+            galleryShowing = !galleryShowing
+        }
+
         inputPad = floatingView.findViewById(R.id.input_pad)
         tvInputDisplay = floatingView.findViewById(R.id.tv_input_display)
         for (d in 0..9) {
@@ -357,6 +379,7 @@ class FloatingService : Service() {
         val count = maxOf(20, QuestionBank.getTotalQuestionConfig(this))
         currentQuestions = QuestionBank.getRandomQuestions(this, count)
         currentIndex = 0; correctCount = 0; wrongQuestionsList.clear()
+        combo = 0; maxCombo = 0; bossDefeated = false
         saveState(); showLockScreen(); showCurrentQuestion()
     }
 
@@ -379,6 +402,10 @@ class FloatingService : Service() {
         }
         // 长题目（古诗教学卡/阅读段落）缩小字号，避免把选项挤出屏幕
         tvQuestion.textSize = if (q.text.length > 60) 17f else 26f
+        // 最后一题包装成 BOSS 战（仅显示层，不动 Question 本体）
+        if (currentIndex == currentQuestions.size - 1) {
+            tvQuestion.text = "🐉 大魔王题！打败它就通关啦！\n\n${tvQuestion.text}"
+        }
         btnReplayAudio.visibility = if (isAudio) View.VISIBLE else View.GONE
         // 有思路可讲（tip 非空）才显示求助按钮；语文认读/英语听音题多数无 tip，自然不显示
         btnHelp.visibility = if (q.tip != null) View.VISIBLE else View.GONE
@@ -453,6 +480,24 @@ class FloatingService : Service() {
         QuestionBank.recordResult(this, q, isCorrect, isMath)
         QuestionBank.updateDifficulty(this, isCorrect)   // 答题表现驱动难度自适应
         q.masteryKey?.let { QuestionBank.recordRecitationResult(this, it, isCorrect) }  // 必背内容掌握度（答错回教学卡）
+
+        // 游戏化：音效 + 连击 + 动画
+        toneGen?.startTone(if (isCorrect) android.media.ToneGenerator.TONE_PROP_ACK
+            else android.media.ToneGenerator.TONE_PROP_NACK, 150)
+        if (isCorrect) {
+            combo++; if (combo > maxCombo) maxCombo = combo
+            if (currentIndex == currentQuestions.size - 1) bossDefeated = true
+            tvFeedback.scaleX = 0.5f; tvFeedback.scaleY = 0.5f
+            tvFeedback.animate().scaleX(1f).scaleY(1f).setDuration(300)
+                .setInterpolator(android.view.animation.OvershootInterpolator()).start()
+        } else {
+            combo = 0
+            lockContainer.animate().translationX(16f).setDuration(50).withEndAction {
+                lockContainer.animate().translationX(-16f).setDuration(50).withEndAction {
+                    lockContainer.animate().translationX(0f).setDuration(50).start()
+                }.start()
+            }.start()
+        }
         tvFeedback.visibility = View.VISIBLE
         if (q.audioWord != null) {
             // 英语听音选图：答完显示“图 + 单词拼写”并复读一遍（音—形—义再连一次），更新逐词掌握度
@@ -464,13 +509,16 @@ class FloatingService : Service() {
             handler.postDelayed({ currentIndex++; saveState(); showCurrentQuestion() }, 1800)
         } else if (isCorrect) {
             tvFeedback.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
+            val isBoss = currentIndex == currentQuestions.size - 1
+            var praise = if (isBoss) "⚔️ 你打败了大魔王！" else praiseMessages.random()
+            if (combo >= 2) praise += "　🔥 连击 x$combo"
             if (q.masteryKey != null && q.tip != null) {
                 // 必背新内容：答对也复看一遍解析，强化记忆（其余题保持快节奏）
-                tvFeedback.text = "${praiseMessages.random()}\n💡 ${q.tip}"
+                tvFeedback.text = "$praise\n💡 ${q.tip}"
                 handler.postDelayed({ currentIndex++; saveState(); showCurrentQuestion() }, 2600)
             } else {
-                tvFeedback.text = praiseMessages.random()
-                handler.postDelayed({ currentIndex++; saveState(); showCurrentQuestion() }, 600)
+                tvFeedback.text = praise
+                handler.postDelayed({ currentIndex++; saveState(); showCurrentQuestion() }, if (isBoss) 1200L else 600L)
             }
         } else {
             val correctText = if (q.inputAnswer != null) q.inputAnswer
@@ -485,6 +533,7 @@ class FloatingService : Service() {
 
     private fun finishQuiz() {
         getSharedPreferences(PREFS_STATE, Context.MODE_PRIVATE).edit().clear().apply()
+        galleryShowing = false; btnGallery.text = "📖 我的图鉴"
         lockContainer.visibility = View.GONE; timerContainer.visibility = View.GONE; resultContainer.visibility = View.VISIBLE
         updateParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, 0, 0)
         
@@ -509,12 +558,25 @@ class FloatingService : Service() {
                 minutes = maxOf(5, minutes / 3)   // 夜间时长收窄但不至于太挫败（⑤ 降焦虑）
             }
 
+            // 游戏化结算：连击/BOSS 奖星 + 宝箱随机奖励（分钟直接加进解锁时长）
+            val comboBonus = when { maxCombo >= 6 -> 2; maxCombo >= 3 -> 1; else -> 0 }
+            val bossBonus = if (bossDefeated) 1 else 0
+            val (chestText, chestMin, chestStars) = GameState.openChest()
+            minutes += chestMin
             QuestionBank.recordUnlockEvent(this, minutes)
 
-            val (streak, stars) = QuestionBank.recordPass(this)
+            val bonus = comboBonus + bossBonus + chestStars
+            val (streak, stars) = QuestionBank.recordPass(this, bonus)
+            val petLine = GameState.petFor(stars).second
+            val sb = StringBuilder("得分: $score　⭐ x$stars${if (bonus > 0) "（今天 +${1 + bonus}）" else ""}\n🔥 连续学习 $streak 天\n")
+            val feats = mutableListOf<String>()
+            if (maxCombo >= 2) feats.add("🔥 最高连击 x$maxCombo")
+            if (bossDefeated) feats.add("⚔️ 击败大魔王")
+            if (feats.isNotEmpty()) sb.append(feats.joinToString("　")).append("\n")
+            sb.append("$chestText\n$petLine\n奖励解锁: $minutes 分钟")
             tvResultTitle.text = passTitles.random(); tvResultTitle.setTextColor(android.graphics.Color.WHITE)
-            tvResultDesc.text = "得分: $score　⭐ x$stars\n🔥 连续学习 $streak 天\n奖励解锁: $minutes 分钟"
-            btnRetry.visibility = View.GONE; handler.postDelayed({ unlockScreen(minutes * 60 * 1000L) }, 2500)
+            tvResultDesc.text = sb.toString()
+            btnRetry.visibility = View.GONE; handler.postDelayed({ unlockScreen(minutes * 60 * 1000L) }, 5000)
         } else {
             tvResultTitle.text = "再接再厉哦！"; tvResultTitle.setTextColor(android.graphics.Color.WHITE)
             // 正向化措辞：先肯定答对的，再说差几题（②的轻量版，正式版下一轮做）
@@ -702,6 +764,8 @@ class FloatingService : Service() {
         countDownTimer?.cancel(); handler.removeCallbacksAndMessages(null)
         try { audioPlayer?.release() } catch (e: Exception) {}
         audioPlayer = null
+        try { toneGen?.release() } catch (e: Exception) {}
+        toneGen = null
         if (::floatingView.isInitialized) try { windowManager.removeView(floatingView) } catch (e: Exception) {}
         scheduleRestart()
     }

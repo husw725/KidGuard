@@ -114,6 +114,9 @@ object Grade3Recitation {
 
     var lastKey: String = ""
 
+    // 图鉴用：必背内容总数
+    val totalItems: Int get() = allKeys.size
+
     // 掌握度加权：全新 3（缓慢引入）、学习中 5（反复出现）、已掌握 1（偶尔复现）
     fun generateWeighted(mastery: Map<String, Int>): Question {
         val weights = allKeys.map { k ->
