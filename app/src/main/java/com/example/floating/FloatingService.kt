@@ -83,6 +83,7 @@ class FloatingService : Service() {
     private lateinit var tvBox: TextView
     private var boxIdleAnim: android.animation.ObjectAnimator? = null
     private var boxOpening = false
+    private var peeking = false   // 答题中点顶栏速览小鸡/农场
 
     // 飞书远程：家长消息横幅 + 快捷回复 + 锁屏期间轮询
     private lateinit var tvParentMsg: TextView
@@ -299,6 +300,7 @@ class FloatingService : Service() {
 
         // 图鉴 / 农场：结果页说明文字三态切换（结算 ↔ 图鉴 ↔ 农场）
         tvPetStatus = floatingView.findViewById(R.id.tv_pet_status)
+        tvPetStatus.setOnClickListener { togglePeek() }
         btnGallery = floatingView.findViewById(R.id.btn_gallery)
         btnFarm = floatingView.findViewById(R.id.btn_farm)
         btnGallery.setOnClickListener { switchResultView(if (resultView == 1) 0 else 1) }
@@ -399,8 +401,24 @@ class FloatingService : Service() {
         saveState(); showLockScreen(); showCurrentQuestion()
     }
 
+    // 答题中点顶部状态栏：题卡临时换成"小鸡成长+农场"速览，再点返回
+    private fun togglePeek() {
+        if (peeking) { peeking = false; showCurrentQuestion(); return }
+        // locked 同时挡住判定动画和开盒屏；结算/倒计时/用完屏时题卡不可见
+        if (onLimitScreen || locked || lockContainer.visibility != View.VISIBLE) return
+        peeking = true; locked = true
+        listOf(btnAns1, btnAns2, btnAns3, btnAns4).forEach { it.visibility = View.GONE }
+        inputPad.visibility = View.GONE; btnHelp.visibility = View.GONE; btnReplayAudio.visibility = View.GONE
+        tvQuestion.textSize = 17f
+        tvQuestion.text = "${GameState.petFor(QuestionBank.getStars(this)).second}\n\n${GameState.farmText(this)}"
+        tvFeedback.visibility = View.VISIBLE
+        tvFeedback.setTextColor(android.graphics.Color.WHITE)
+        tvFeedback.text = "👇 再点一下顶栏，回去继续答题"
+    }
+
     private fun showCurrentQuestion() {
         if (currentIndex >= currentQuestions.size) { finishQuiz(); return }
+        peeking = false
         if (GameState.hasPendingBox(this)) { showBoxScreen(); return }   // 有待开的盲盒：先开盒再继续
         tvBox.visibility = View.GONE
         val q = currentQuestions[currentIndex]
