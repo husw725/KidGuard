@@ -6,8 +6,11 @@ import android.graphics.ColorMatrixColorFilter
 import android.text.SpannableString
 import android.text.SpannableStringBuilder
 import android.text.Spanned
+import android.text.TextPaint
+import android.text.style.ClickableSpan
 import android.text.style.ImageSpan
 import android.text.style.RelativeSizeSpan
+import android.view.View
 import kotlin.random.Random
 
 /**
@@ -99,8 +102,19 @@ object GameState {
     // 点开盒子：抽稀有度与小动物，入农场、分钟入账；返回（动物emoji, 揭晓文案, 奖励分钟）
     fun openBox(context: Context): Triple<String, String, Int> {
         val p = context.getSharedPreferences(PET_PREFS, Context.MODE_PRIVATE)
+        // 手气加成：挪出的 L 点按 60/30/10 分给稀有/史诗/隐藏款（整除余数归稀有）
+        val luck = luckFor(QuestionBank.getStars(context))
+        val common = 60 - luck
+        val epic = 9 + luck * 3 / 10
+        val legend = 1 + luck / 10
+        val rare = 100 - common - epic - legend
         val r = Random.nextInt(100)
-        val tier = when { r < 60 -> tiers[0]; r < 90 -> tiers[1]; r < 99 -> tiers[2]; else -> tiers[3] }
+        val tier = when {
+            r < common -> tiers[0]
+            r < common + rare -> tiers[1]
+            r < common + rare + epic -> tiers[2]
+            else -> tiers[3]
+        }
         val (emoji, name) = tier.animals.random()
         val farm = p.getString(KEY_FARM_ANIMALS, "") ?: ""
         p.edit()
@@ -161,15 +175,21 @@ object GameState {
         return sb
     }
 
-    // 小鸡进化链（速览页顶部）：已达成彩色、未来灰度，当前阶段更大
-    fun petEvolution(context: Context): CharSequence {
+    // 小鸡进化链（速览页顶部）：已达成彩色、未来灰度，当前阶段更大；
+    // 传 onStage 时每个图标可点（配合 LinkMovementMethod），点开看该阶段详情
+    fun petEvolution(context: Context, onStage: ((Int) -> Unit)? = null): CharSequence {
         val stars = QuestionBank.getStars(context)
         val s = stars % CYCLE
         val n = phoenixCount(stars)
         val idx = pets.indexOfLast { s >= it.first }
         val sb = SpannableStringBuilder(if (n > 0) "🐦‍🔥 我的小鸡（已养成凤凰 ×$n）\n\n" else "🐔 我的小鸡\n\n")
         pets.forEachIndexed { i, (_, emoji) ->
+            val start = sb.length
             sb.append(icon(context, emoji, if (i == idx) 56 else 38, grey = i > idx))
+            if (onStage != null) sb.setSpan(object : ClickableSpan() {
+                override fun onClick(widget: View) { onStage(i) }
+                override fun updateDrawState(ds: TextPaint) {}   // 图标不需要链接样式
+            }, start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             if (i < pets.size - 1) appendSmall(sb, " ➜ ")
         }
         sb.append("\n")
@@ -195,6 +215,24 @@ object GameState {
     private val pets = listOf(0 to "🥚", 15 to "🐣", 40 to "🐥", 80 to "🐤", 140 to "🐔", 240 to "🐦‍🔥")
 
     fun phoenixCount(stars: Int): Int = stars / CYCLE
+
+    private val stageNames = listOf("蛋蛋", "破壳", "毛毛球", "小鸡", "大公鸡", "传说凤凰")
+    private val stageLuck = listOf(0, 3, 6, 9, 12, 15)   // 各阶段的开盒手气（百分点）
+
+    private fun stageIdx(stars: Int): Int = pets.indexOfLast { stars % CYCLE >= it.first }
+
+    // 开盒手气：鸡的阶段 + 每只已养成凤凰 +3，封顶 +30（从"普通60%"里挪给稀有以上）
+    fun luckFor(stars: Int): Int =
+        minOf(30, stageLuck[stageIdx(stars)] + 3 * phoenixCount(stars))
+
+    // 进化链上第 i 阶的详情（点图标查看）：所需星星 + 该阶段手气
+    fun stageDetail(context: Context, i: Int): String {
+        val s = QuestionBank.getStars(context) % CYCLE
+        val (need, emoji) = pets[i]
+        val luckText = "开盒手气 +${stageLuck[i]}%"
+        return if (s >= need) "✅ ${stageNames[i]} $emoji 已达成 · $luckText"
+        else "${stageNames[i]} $emoji：需 ${need}⭐（还差 ${need - s}⭐）· $luckText"
+    }
 
     fun petFor(stars: Int): Pair<String, String> {
         val s = stars % CYCLE

@@ -439,9 +439,13 @@ class FloatingService : Service() {
         btnAns1.text = "↩️ 回去"; btnAns1.textSize = 18f
         btnAns1.visibility = View.VISIBLE; btnAns1.isEnabled = true
         tvQuestion.textSize = 17f
-        // 不能用字符串模板拼接，会把 ImageSpan 打掉
+        // 进化链图标可点看详情；不能用字符串模板拼接，会把 ImageSpan/ClickableSpan 打掉
+        tvQuestion.movementMethod = android.text.method.LinkMovementMethod.getInstance()
         tvQuestion.text = android.text.TextUtils.concat(
-            GameState.petEvolution(this), "\n\n", GameState.farmText(this))
+            GameState.petEvolution(this) { i ->
+                tvFeedback.text = GameState.stageDetail(this, i)
+                tvFeedback.setTextColor(android.graphics.Color.parseColor("#1976D2"))
+            }, "\n\n", GameState.farmText(this))
         tvFeedback.visibility = View.VISIBLE
         tvFeedback.setTextColor(android.graphics.Color.WHITE)
         tvFeedback.text = "👇 点「回去」或再点顶栏，继续${if (onLimitScreen) "" else "答题"}"
@@ -450,6 +454,7 @@ class FloatingService : Service() {
     private fun showCurrentQuestion() {
         if (currentIndex >= currentQuestions.size) { finishQuiz(); return }
         peeking = false
+        tvQuestion.movementMethod = null   // 速览页的链接点击模式不带回答题页
         if (GameState.hasPendingBox(this)) { showBoxScreen(); return }   // 有待开的盲盒：先开盒再继续
         tvBox.visibility = View.GONE
         val q = currentQuestions[currentIndex]
@@ -523,7 +528,8 @@ class FloatingService : Service() {
         listOf(btnAns1, btnAns2, btnAns3, btnAns4).forEach { it.visibility = View.GONE }
         inputPad.visibility = View.GONE; btnHelp.visibility = View.GONE; btnReplayAudio.visibility = View.GONE
         tvFeedback.visibility = View.VISIBLE
-        tvFeedback.text = "👇 点一点盒子，看看开出什么！"
+        val luck = GameState.luckFor(QuestionBank.getStars(this))
+        tvFeedback.text = "👇 点一点盒子，看看开出什么！" + if (luck > 0) "\n🍀 小鸡手气 +$luck%" else ""
         tvFeedback.setTextColor(android.graphics.Color.WHITE)
         tvBox.text = GameState.icon(this, "🎁", 110)
         tvBox.rotation = 0f; tvBox.scaleX = 1f; tvBox.scaleY = 1f
@@ -863,6 +869,7 @@ class FloatingService : Service() {
         tvFeedback.visibility = View.INVISIBLE
         tvQuestion.text = "今天的解锁次数用完啦 🔒\n已解锁 ${QuestionBank.getDailyUnlockLimit(this)} 次，明天再来吧！想继续请爸爸妈妈远程解锁。\n\n顺便学一个 👇\n${QuestionBank.getTeachingCard()}"
         tvQuestion.textSize = 17f
+        tvQuestion.movementMethod = null
         locked = false; peeking = false   // 防上一局残留状态挡住速览
     }
 
