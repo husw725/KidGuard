@@ -12,12 +12,14 @@ mkdir -p "$BACKUP_DIR"
 
 # 1) 安装前备份（设备上有旧版本才会成功；失败静默跳过）
 echo "备份设备上的学习数据..."
+# 先写临时文件，成功才覆盖——设备离线/失败时保住上一次的好备份
 for f in "${PREFS[@]}"; do
-    if adb exec-out run-as $PKG cat "shared_prefs/$f.xml" > "$BACKUP_DIR/$f.xml" 2>/dev/null \
-       && [ -s "$BACKUP_DIR/$f.xml" ]; then
+    if adb exec-out run-as $PKG cat "shared_prefs/$f.xml" > "$BACKUP_DIR/$f.xml.tmp" 2>/dev/null \
+       && [ -s "$BACKUP_DIR/$f.xml.tmp" ]; then
+        mv "$BACKUP_DIR/$f.xml.tmp" "$BACKUP_DIR/$f.xml"
         echo "  ✓ $f"
     else
-        rm -f "$BACKUP_DIR/$f.xml"
+        rm -f "$BACKUP_DIR/$f.xml.tmp"
     fi
 done
 

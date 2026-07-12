@@ -1,6 +1,13 @@
 package com.example.floating
 
 import android.content.Context
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.text.SpannableString
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.ImageSpan
+import android.text.style.RelativeSizeSpan
 import kotlin.random.Random
 
 /**
@@ -9,6 +16,35 @@ import kotlin.random.Random
  * 星星驱动称号与宠物成长；图鉴从现有掌握度数据派生，零额外存储。
  */
 object GameState {
+
+    // 3D 立体美术（微软 Fluent emoji，MIT，见 THIRD_PARTY_LICENSES.md）：emoji → drawable
+    // 注意 🐤 是侧面 Baby chick，🐥 是正面 Front-facing baby chick
+    private val art = mapOf(
+        "🥚" to R.drawable.art_egg, "🐣" to R.drawable.art_hatching_chick,
+        "🐤" to R.drawable.art_baby_chick, "🐥" to R.drawable.art_chick_front,
+        "🐔" to R.drawable.art_chicken, "🐦‍🔥" to R.drawable.art_phoenix, "🎁" to R.drawable.art_gift,
+        "🐰" to R.drawable.art_rabbit, "🐱" to R.drawable.art_cat, "🐶" to R.drawable.art_dog,
+        "🐹" to R.drawable.art_hamster, "🐷" to R.drawable.art_pig, "🐸" to R.drawable.art_frog,
+        "🐟" to R.drawable.art_fish, "🐼" to R.drawable.art_panda, "🦊" to R.drawable.art_fox,
+        "🐧" to R.drawable.art_penguin, "🦉" to R.drawable.art_owl, "🐢" to R.drawable.art_turtle,
+        "🦋" to R.drawable.art_butterfly, "🦄" to R.drawable.art_unicorn, "🐬" to R.drawable.art_dolphin,
+        "🦚" to R.drawable.art_peacock, "🐉" to R.drawable.art_dragon
+    )
+
+    // 单个 3D 图标（可灰度=未收集/未达成）；没有对应美术时回退原 emoji 文本
+    fun icon(context: Context, emoji: String, sizeDp: Int, grey: Boolean = false): CharSequence {
+        val resId = art[emoji] ?: return emoji
+        val d = context.resources.getDrawable(resId, context.theme).mutate()
+        val px = (sizeDp * context.resources.displayMetrics.density).toInt()
+        d.setBounds(0, 0, px, px)
+        if (grey) {
+            d.colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0f) })
+            d.alpha = 120
+        }
+        return SpannableString("￼").apply {
+            setSpan(ImageSpan(d, ImageSpan.ALIGN_BOTTOM), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+    }
 
     // 通关宝箱：随机奖励，返回（展示文案, 额外解锁分钟, 额外星星）
     fun openChest(): Triple<String, Int, Int> {
@@ -97,19 +133,55 @@ object GameState {
         val stars = QuestionBank.getStars(context)
         val filled = prog * 5 / HATCH_TARGET
         val bar = "▓".repeat(filled) + "░".repeat(5 - filled)
-        return "${petFor(stars).first} ⭐$stars　🏡×$farmCount　🎁 盲盒 $bar $prog/$HATCH_TARGET"
+        val phoenix = phoenixCount(stars).let { if (it > 0) "　🐦‍🔥×$it" else "" }
+        return "${petFor(stars).first} ⭐$stars$phoenix　🏡×$farmCount　🎁 盲盒 $bar $prog/$HATCH_TARGET"
     }
 
-    // 农场页：emoji 墙 + 收集统计
-    fun farmText(context: Context): String {
+    // 农场图鉴：按稀有度分区展示全部动物，已收集彩色+数量，未收集灰度剪影
+    fun farmText(context: Context): CharSequence {
         val p = context.getSharedPreferences(PET_PREFS, Context.MODE_PRIVATE)
-        val animals = farmList(p)
-        if (animals.isEmpty()) return "🏡 我的农场\n\n还空着呢～答对题攒满盲盒能量，\n就能开出神秘小伙伴哦！"
-        val byTier = tiers.map { t -> t to animals.count { a -> t.animals.any { it.first == a } } }
-        val stats = byTier.filter { it.second > 0 && it.first.label != "普通" }
-            .joinToString("　") { "${it.first.label} x${it.second}" }
-        return "🏡 我的农场\n\n${animals.joinToString(" ")}\n\n已收集 ${animals.size} 只小伙伴" +
-            if (stats.isNotEmpty()) "\n$stats" else ""
+        val counts = farmList(p).groupingBy { it }.eachCount()
+        val sb = SpannableStringBuilder("🏡 我的农场图鉴\n")
+        for (t in tiers) {
+            val name = if (t.label == "传说") "隐藏款 🌈" else when (t.label) {
+                "稀有" -> "稀有 ✨"; "史诗" -> "史诗 💫"; else -> "普通"
+            }
+            appendSmall(sb, "\n$name · 每只 +${t.minutes} 分钟\n")
+            for ((emoji, _) in t.animals) {
+                val n = counts[emoji] ?: 0
+                sb.append(icon(context, emoji, 40, grey = n == 0))
+                if (n > 1) appendSmall(sb, "×$n")
+                sb.append("  ")
+            }
+            sb.append("\n")
+        }
+        val total = counts.values.sum()
+        sb.append("\n已收集 ${counts.keys.size}/${tiers.sumOf { it.animals.size }} 种 · 共 $total 只")
+        if (total == 0) sb.append("\n答对题攒满盲盒能量，就能开出神秘小伙伴哦！")
+        return sb
+    }
+
+    // 小鸡进化链（速览页顶部）：已达成彩色、未来灰度，当前阶段更大
+    fun petEvolution(context: Context): CharSequence {
+        val stars = QuestionBank.getStars(context)
+        val s = stars % CYCLE
+        val n = phoenixCount(stars)
+        val idx = pets.indexOfLast { s >= it.first }
+        val sb = SpannableStringBuilder(if (n > 0) "🐦‍🔥 我的小鸡（已养成凤凰 ×$n）\n\n" else "🐔 我的小鸡\n\n")
+        pets.forEachIndexed { i, (_, emoji) ->
+            sb.append(icon(context, emoji, if (i == idx) 56 else 38, grey = i > idx))
+            if (i < pets.size - 1) appendSmall(sb, " ➜ ")
+        }
+        sb.append("\n")
+        appendSmall(sb, if (idx == pets.size - 1) "⭐$stars · 第 ${n + 1} 只凤凰养成！再攒 ${CYCLE - s}⭐ 迎接新蛋"
+            else "⭐$stars · 再攒 ${pets[idx + 1].first - s}⭐ 进化成下一形态")
+        return sb
+    }
+
+    private fun appendSmall(sb: SpannableStringBuilder, text: String) {
+        val start = sb.length
+        sb.append(text)
+        sb.setSpan(RelativeSizeSpan(0.75f), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
 
     private fun farmList(p: android.content.SharedPreferences): List<String> {
@@ -117,14 +189,21 @@ object GameState {
         return if (s.isEmpty()) emptyList() else s.split(",")
     }
 
-    // 宠物成长：星星总数 -> (emoji, 阶段文案)
-    private val pets = listOf(0 to "🥚", 15 to "🐣", 40 to "🐥", 80 to "🐤", 140 to "🐔")
+    // 宠物成长（轮回制）：每 260⭐ 一轮——240 养成传说凤凰，欣赏 20⭐ 后自动迎来下一只蛋。
+    // 已养成凤凰数 = 总星数 / 260，纯派生零存储，重装恢复天然兼容。
+    private const val CYCLE = 260
+    private val pets = listOf(0 to "🥚", 15 to "🐣", 40 to "🐥", 80 to "🐤", 140 to "🐔", 240 to "🐦‍🔥")
+
+    fun phoenixCount(stars: Int): Int = stars / CYCLE
 
     fun petFor(stars: Int): Pair<String, String> {
-        val idx = pets.indexOfLast { stars >= it.first }
+        val s = stars % CYCLE
+        val idx = pets.indexOfLast { s >= it.first }
         val emoji = pets[idx].second
-        return if (idx == pets.size - 1) emoji to "$emoji 你的小鸡完全长大啦！"
-        else emoji to "$emoji 攒到 ${pets[idx + 1].first}⭐ 就会变成 ${pets[idx + 1].second}"
+        // 进度文案都用"再攒 X⭐"的差值口径，第二轮起总星数和轮内进度不同，绝对值会看糊涂
+        return if (idx == pets.size - 1)
+            emoji to "$emoji 第 ${stars / CYCLE + 1} 只传说凤凰养成！再攒 ${CYCLE - s}⭐ 迎接新蛋"
+        else emoji to "$emoji 再攒 ${pets[idx + 1].first - s}⭐ 就会变成 ${pets[idx + 1].second}"
     }
 
     // 图鉴：英语 emoji 墙 + 已点亮的必背内容

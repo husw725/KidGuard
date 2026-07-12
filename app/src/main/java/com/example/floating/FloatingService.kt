@@ -114,6 +114,8 @@ class FloatingService : Service() {
 
     private var questionClickCount = 0
     private var lastQuestionClickTime = 0L
+    private var superAdminArmedUntil = 0L    // 连点5次后的待命窗口截止
+    private var superAdminHoldStart = 0L     // 长按开始时刻
 
     // 答对时的随机鼓励语，让小欣每次都有新惊喜
     private val praiseMessages = listOf(
@@ -323,16 +325,32 @@ class FloatingService : Service() {
         listOf(R.id.btn_qr_1 to "好的👌", R.id.btn_qr_2 to "知道啦", R.id.btn_qr_3 to "想你了❤️", R.id.btn_qr_4 to "等下就好")
             .forEach { (id, label) -> floatingView.findViewById<Button>(id).setOnClickListener { sendQuickReply(label) } }
 
-        // 连点 5 次触发超管应急解锁（相邻两次间隔不超 2 秒，家长从容点也能触发）；题目文字和结果标题都挂同一入口
+        // 超管应急解锁双重手势：连点 5 次（相邻间隔≤2秒）进入 5 秒待命，待命期内再长按 3 秒才触发。
+        // 单独连点或单独长按都无效——小欣误触连点过一次，白拿 3 分钟。全程无界面提示，对孩子隐形。
         val superAdminTap = View.OnClickListener {
             val now = System.currentTimeMillis()
             if (now - lastQuestionClickTime > 2000) questionClickCount = 0
             questionClickCount++
             lastQuestionClickTime = now
-            if (questionClickCount >= 5) { questionClickCount = 0; handleSuperAdminUnlock() }
+            if (questionClickCount >= 5) { questionClickCount = 0; superAdminArmedUntil = now + 5000 }
+        }
+        val superAdminHold = View.OnTouchListener { _, ev ->
+            when (ev.action) {
+                android.view.MotionEvent.ACTION_DOWN -> superAdminHoldStart = System.currentTimeMillis()
+                android.view.MotionEvent.ACTION_UP -> {
+                    val now = System.currentTimeMillis()
+                    if (superAdminHoldStart < superAdminArmedUntil && now - superAdminHoldStart >= 3000) {
+                        superAdminArmedUntil = 0L
+                        handleSuperAdminUnlock()
+                    }
+                }
+            }
+            false   // 不消费事件，点击计数照常工作
         }
         tvQuestion.setOnClickListener(superAdminTap)
         tvResultTitle.setOnClickListener(superAdminTap)
+        tvQuestion.setOnTouchListener(superAdminHold)
+        tvResultTitle.setOnTouchListener(superAdminHold)
     }
 
     // 结果页三态切换：0 结算文字 / 1 图鉴 / 2 农场
@@ -364,7 +382,9 @@ class FloatingService : Service() {
         currentQuestions.forEach { qArray.put(it.toJsonObject()) }
         val wArray = JSONArray()
         wrongQuestionsList.forEach { wArray.put(it) }
-        prefs.edit().putBoolean(KEY_IN_PROGRESS, true).putInt(KEY_INDEX, currentIndex).putInt(KEY_CORRECT, correctCount).putString(KEY_QUESTIONS, qArray.toString()).putString(KEY_WRONGS, wArray.toString()).apply()
+        prefs.edit().putBoolean(KEY_IN_PROGRESS, true).putInt(KEY_INDEX, currentIndex).putInt(KEY_CORRECT, correctCount).putString(KEY_QUESTIONS, qArray.toString()).putString(KEY_WRONGS, wArray.toString())
+            // 连击/BOSS 也要随局持久化，否则中途熄屏恢复后连击清零，通关奖星被漏掉
+            .putInt("Combo", combo).putInt("MaxCombo", maxCombo).putBoolean("BossDefeated", bossDefeated).apply()
     }
 
     private fun restoreOrStartQuiz() {
@@ -375,6 +395,9 @@ class FloatingService : Service() {
         if (prefs.getBoolean(KEY_IN_PROGRESS, false)) {
             currentIndex = prefs.getInt(KEY_INDEX, 0)
             correctCount = prefs.getInt(KEY_CORRECT, 0)
+            combo = prefs.getInt("Combo", 0)
+            maxCombo = prefs.getInt("MaxCombo", 0)
+            bossDefeated = prefs.getBoolean("BossDefeated", false)
             val qStr = prefs.getString(KEY_QUESTIONS, "[]") ?: "[]"
             val wStr = prefs.getString(KEY_WRONGS, "[]") ?: "[]"
             try {
@@ -401,19 +424,27 @@ class FloatingService : Service() {
         saveState(); showLockScreen(); showCurrentQuestion()
     }
 
-    // 答题中点顶部状态栏：题卡临时换成"小鸡成长+农场"速览，再点返回
+    // 点顶部状态栏：题卡临时换成"小鸡成长+农场"速览（答题中/次数用完屏均可）
     private fun togglePeek() {
-        if (peeking) { peeking = false; showCurrentQuestion(); return }
-        // locked 同时挡住判定动画和开盒屏；结算/倒计时/用完屏时题卡不可见
-        if (onLimitScreen || locked || lockContainer.visibility != View.VISIBLE) return
+        if (peeking) {
+            peeking = false
+            if (onLimitScreen) showLimitReachedScreen() else showCurrentQuestion()
+            return
+        }
+        // locked 同时挡住判定动画和开盒屏；结算/倒计时屏时题卡不可见
+        if (locked || lockContainer.visibility != View.VISIBLE) return
         peeking = true; locked = true
-        listOf(btnAns1, btnAns2, btnAns3, btnAns4).forEach { it.visibility = View.GONE }
+        listOf(btnAns2, btnAns3, btnAns4).forEach { it.visibility = View.GONE }
         inputPad.visibility = View.GONE; btnHelp.visibility = View.GONE; btnReplayAudio.visibility = View.GONE
+        btnAns1.text = "↩️ 回去"; btnAns1.textSize = 18f
+        btnAns1.visibility = View.VISIBLE; btnAns1.isEnabled = true
         tvQuestion.textSize = 17f
-        tvQuestion.text = "${GameState.petFor(QuestionBank.getStars(this)).second}\n\n${GameState.farmText(this)}"
+        // 不能用字符串模板拼接，会把 ImageSpan 打掉
+        tvQuestion.text = android.text.TextUtils.concat(
+            GameState.petEvolution(this), "\n\n", GameState.farmText(this))
         tvFeedback.visibility = View.VISIBLE
         tvFeedback.setTextColor(android.graphics.Color.WHITE)
-        tvFeedback.text = "👇 再点一下顶栏，回去继续答题"
+        tvFeedback.text = "👇 点「回去」或再点顶栏，继续${if (onLimitScreen) "" else "答题"}"
     }
 
     private fun showCurrentQuestion() {
@@ -476,6 +507,7 @@ class FloatingService : Service() {
     }
 
     private fun checkAnswer(idx: Int) {
+        if (peeking) { togglePeek(); return }   // 速览页的「↩️ 回去」复用选项1
         if (locked || currentIndex >= currentQuestions.size) return
         val q = currentQuestions[currentIndex]
         handleAnswer(q, idx == q.correctIndex)
@@ -493,7 +525,7 @@ class FloatingService : Service() {
         tvFeedback.visibility = View.VISIBLE
         tvFeedback.text = "👇 点一点盒子，看看开出什么！"
         tvFeedback.setTextColor(android.graphics.Color.WHITE)
-        tvBox.text = "🎁"
+        tvBox.text = GameState.icon(this, "🎁", 110)
         tvBox.rotation = 0f; tvBox.scaleX = 1f; tvBox.scaleY = 1f
         tvBox.visibility = View.VISIBLE
         // 待开时左右摇晃，勾着她来点
@@ -515,7 +547,7 @@ class FloatingService : Service() {
             .withEndAction {
                 val (emoji, title, minutes) = GameState.openBox(this)
                 tvBox.rotation = 0f
-                tvBox.text = emoji
+                tvBox.text = GameState.icon(this, emoji, 110)
                 tvBox.scaleX = 0.3f; tvBox.scaleY = 0.3f
                 tvBox.animate().scaleX(1.6f).scaleY(1.6f).setDuration(450)
                     .setInterpolator(android.view.animation.OvershootInterpolator()).start()
@@ -654,18 +686,20 @@ class FloatingService : Service() {
             // 游戏化结算：连击/BOSS 奖星 + 宝箱随机奖励 + 孵蛋攒的分钟（都计入解锁时长）
             val comboBonus = when { maxCombo >= 6 -> 2; maxCombo >= 3 -> 1; else -> 0 }
             val bossBonus = if (bossDefeated) 1 else 0
+            val perfectBonus = if (correctCount == totalQuestions) 2 else 0   // 全对满分奖励
             val (chestText, chestMin, chestStars) = GameState.openChest()
             val hatchMin = GameState.redeemBoxMinutes(this)
             minutes += chestMin + hatchMin
             QuestionBank.recordUnlockEvent(this, minutes)
 
-            val bonus = comboBonus + bossBonus + chestStars
+            val bonus = comboBonus + bossBonus + perfectBonus + chestStars
             val (streak, stars) = QuestionBank.recordPass(this, bonus)
             val petLine = GameState.petFor(stars).second
             val sb = StringBuilder("得分: $score　⭐ x$stars${if (bonus > 0) "（今天 +${1 + bonus}）" else ""}\n🔥 连续学习 $streak 天\n")
             val feats = mutableListOf<String>()
             if (maxCombo >= 2) feats.add("🔥 最高连击 x$maxCombo")
             if (bossDefeated) feats.add("⚔️ 击败大魔王")
+            if (perfectBonus > 0) feats.add("💯 全对满分 +2⭐")
             if (feats.isNotEmpty()) sb.append(feats.joinToString("　")).append("\n")
             sb.append("$chestText\n")
             if (hatchMin > 0) sb.append("🎁 盲盒奖励 +$hatchMin 分钟\n")
@@ -820,14 +854,16 @@ class FloatingService : Service() {
         // 隐藏答题相关视图，只留标题/消息/快捷回复
         tvProgressText.visibility = View.GONE
         quizProgressBar.visibility = View.GONE
-        tvPetStatus.visibility = View.GONE
+        tvPetStatus.visibility = View.VISIBLE          // 可点开图鉴速览
+        tvPetStatus.text = GameState.statusLine(this)
         tvBox.visibility = View.GONE; boxIdleAnim?.cancel()
         btnReplayAudio.visibility = View.GONE
         inputPad.visibility = View.GONE
         listOf(btnAns1, btnAns2, btnAns3, btnAns4).forEach { it.visibility = View.GONE }
         tvFeedback.visibility = View.INVISIBLE
-        tvQuestion.text = "今天的解锁次数用完啦 🔒\n已解锁 ${QuestionBank.getDailyUnlockLimit(this)} 次，明天再来吧！想继续请爸爸妈妈远程解锁。\n\n顺便学一个 👇\n${QuestionBank.getTeachingCard()}\n\n${GameState.statusLine(this)}"
+        tvQuestion.text = "今天的解锁次数用完啦 🔒\n已解锁 ${QuestionBank.getDailyUnlockLimit(this)} 次，明天再来吧！想继续请爸爸妈妈远程解锁。\n\n顺便学一个 👇\n${QuestionBank.getTeachingCard()}"
         tvQuestion.textSize = 17f
+        locked = false; peeking = false   // 防上一局残留状态挡住速览
     }
 
     private fun showParentMessage(text: String) {
