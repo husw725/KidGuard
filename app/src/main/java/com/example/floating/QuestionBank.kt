@@ -569,9 +569,18 @@ object QuestionBank {
         val allVerbalPool = (cloudQuestions + builtinVerbalQuestions + ThinkingChineseQuestions.questions).distinctBy { it.text }
         val selectedQuestions = mutableSetOf<Question>()
 
-        // 题量分配：英语少量起步(1~2题)，其余语文 / 数学对半
+        // 同感题型每局限流：找规律（3个题源冷却互不相通）和连词成句都最多 1 道
+        fun canAdd(q: Question): Boolean {
+            if (selectedQuestions.any { it.text == q.text }) return false
+            if ("规律" in q.text && selectedQuestions.any { "规律" in it.text }) return false
+            if ("通顺" in q.text && selectedQuestions.any { "通顺" in it.text }) return false
+            return true
+        }
+
+        // 题量分配：末位留给 BOSS 难题，其余英语少量起步(1~2题)、语文/数学对半
+        val target = count - 1
         val englishCount = if (count >= 8) 2 else 1
-        val verbalLimit = (count - englishCount) / 2
+        val verbalLimit = (target - englishCount) / 2
 
         // 0. 三上必背（暑期预习，先教后测）：每局固定 2 道，计入语文份额
         val recitationMastery = loadMastery(prefs, KEY_RECITATION_MASTERY)
@@ -599,7 +608,7 @@ object QuestionBank {
                 3 -> generateFunRiddle()                 // 谜语/脑筋急转弯（趣味）
                 else -> generateReadingQuestion()
             }
-            if (selectedQuestions.none { it.text == q.text }) selectedQuestions.add(q)
+            if (canAdd(q)) selectedQuestions.add(q)
         }
 
         // 2. 其余语文 — 按“多久没出现 + 错过几次”加权
@@ -619,7 +628,7 @@ object QuestionBank {
                 r -= weightedPool[i].second
                 if (r < 0) {
                     val q = weightedPool[i].first.shuffledOptions()
-                    selectedQuestions.add(q)
+                    if (canAdd(q)) selectedQuestions.add(q)   // 不满足限流：只移出池子，防死循环
                     weightedPool.removeAt(i)
                     break
                 }
@@ -630,7 +639,7 @@ object QuestionBank {
         var englishAdded = 0
         guard = 0
         val englishMastery = loadMastery(prefs, KEY_ENGLISH_MASTERY)
-        while (englishAdded < englishCount && selectedQuestions.size < count && guard < 50) {
+        while (englishAdded < englishCount && selectedQuestions.size < target && guard < 50) {
             guard++
             val q = EnglishGenerator.generateWeighted(englishMastery)
             // 听力题按单词去重（允许两道不同单词的听力题），其余按题干去重
@@ -650,12 +659,12 @@ object QuestionBank {
 
         // 4. 数学 — 难度决定“奥数/思维题 : 课内题”的比例
         //    基础档(1)以课内为主，挑战档(3)奥数思维题更多，随孩子水平走
-        val mathNeeded = count - selectedQuestions.size
+        val mathNeeded = target - selectedQuestions.size
         val challengeRatio = when (currentDifficulty) { 1 -> 0.2; 3 -> 0.7; else -> 0.45 }
         val challengeQuota = Math.round(mathNeeded * challengeRatio).toInt()
         var challengeAdded = 0
         guard = 0
-        while (selectedQuestions.size < count && challengeAdded < challengeQuota && guard < 80) {
+        while (selectedQuestions.size < target && challengeAdded < challengeQuota && guard < 80) {
             guard++
             // 思维题 / 奥数题 / 巧算题 三选一轮换
             val src = challengeAdded % 3
@@ -664,7 +673,7 @@ object QuestionBank {
                 1 -> OlympiadMathGenerator.generateWeighted(mathTypeSeenRound, mathTypeErrors)
                 else -> SmartCalcGenerator.generateWeighted(mathTypeSeenRound, mathTypeErrors)
             }
-            if (selectedQuestions.none { it.text == q.text }) {
+            if (canAdd(q)) {
                 selectedQuestions.add(q)
                 val tn = when (src) {
                     0 -> ThinkingMathGenerator.lastGeneratedType
@@ -678,15 +687,15 @@ object QuestionBank {
 
         // 课内数学题填满剩余（基础档优先纯口算课内题）
         guard = 0
-        while (selectedQuestions.size < count && guard < 100) {
+        while (selectedQuestions.size < target && guard < 100) {
             guard++
             if (Random.nextInt(100) < 30) {              // 约 30% 出“手输得数”题，降低蒙对率（③）
                 val q = generateInputMath()
-                if (selectedQuestions.none { it.text == q.text }) selectedQuestions.add(q)
+                if (canAdd(q)) selectedQuestions.add(q)
                 continue
             }
             val (q, typeName) = if (currentDifficulty == 1) generateGrade2Math() else selectOldMathByWeight()
-            if (selectedQuestions.none { it.text == q.text }) {
+            if (canAdd(q)) {
                 selectedQuestions.add(q)
                 mathTypeSeenRound[typeName] = currentRound + 1
             }
@@ -698,6 +707,11 @@ object QuestionBank {
             if (isStaticQuestion(text)) {
                 lastSeenRound[text] = currentRound + 1
             }
+        }
+        // 连词成句共享冷却：出过任意一道，整组 10 道一起冷却（题感完全相同，逐题冷却等于每局都见）
+        if (selectedTexts.any { "排列成通顺" in it }) {
+            ThinkingChineseQuestions.questions.filter { "排列成通顺" in it.text }
+                .forEach { lastSeenRound[it.text] = currentRound + 1 }
         }
         // 数学题型 - ThinkingMath 和 Olympiad 已在加权选择中记录
         if (ThinkingMathGenerator.lastGeneratedType.isNotEmpty()) {
@@ -722,7 +736,16 @@ object QuestionBank {
             .putInt(KEY_QUIZ_ROUND, currentRound + 1)
             .apply()
 
-        return selectedQuestions.toList().shuffled()
+        // BOSS 题：末位固定一道思维/奥数档难题，配得上"🐉 大魔王"（显示层横幅在 FloatingService）
+        var boss: Question? = null
+        var bossGuard = 0
+        while (boss == null && bossGuard < 10) {
+            bossGuard++
+            val q = if (Random.nextBoolean()) ThinkingMathGenerator.generateWeighted(mathTypeSeenRound, mathTypeErrors)
+                else OlympiadMathGenerator.generateWeighted(mathTypeSeenRound, mathTypeErrors)
+            if (canAdd(q)) boss = q
+        }
+        return selectedQuestions.toList().shuffled() + listOfNotNull(boss)
     }
 
     private fun isStaticQuestion(text: String): Boolean {

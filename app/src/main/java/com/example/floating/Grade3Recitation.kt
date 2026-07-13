@@ -151,27 +151,34 @@ object Grade3Recitation {
     private fun poemQuestion(p: Poem, teach: Boolean): Question {
         val key = "poem-${p.title}"
         if (teach) {
-            val text = "📜 跟我学一首新诗\n\n《${p.title}》 [${p.dynasty}] ${p.author}\n${p.lines.joinToString("\n")}\n\n💬 意思：${p.meaning}\n\n读一读，问题：这首诗的作者是谁？"
-            return createQ(text, p.author, otherAuthors(p.author), "答案就在上面的诗里，找一找作者的名字", key)
+            // 教学卡 2/3 问下一句（逼着把整首读完）、1/3 问作者——只问作者太单调，也背不下诗
+            val header = "📜 跟我学一首新诗\n\n《${p.title}》 [${p.dynasty}] ${p.author}\n${p.lines.joinToString("\n")}\n\n💬 意思：${p.meaning}\n\n读一读，问题："
+            if (Random.nextInt(3) < 2) {
+                val i = Random.nextInt(p.lines.size - 1)
+                val wrongs = poems.filter { it.title != p.title }.flatMap { it.lines }.map { clean(it) }.shuffled().take(3)
+                return createQ(header + "「${clean(p.lines[i])}」的下一句是？", clean(p.lines[i + 1]), wrongs,
+                    "答案就在上面的诗里，找到这一句再往下读", key)
+            }
+            return createQ(header + "这首诗的作者是谁？", p.author, otherAuthors(p.author), "答案就在上面的诗里，找一找作者的名字", key)
         }
-        return when (Random.nextInt(3)) {
-            // 补下句
-            0 -> {
+        return when (Random.nextInt(10)) {
+            // 补下句 40%
+            in 0..3 -> {
                 val i = Random.nextInt(p.lines.size - 1)
                 val wrongs = poems.filter { it.title != p.title }.flatMap { it.lines }.map { clean(it) }.shuffled().take(3)
                 createQ("📜《${p.title}》\n「${clean(p.lines[i])}」的下一句是？", clean(p.lines[i + 1]), wrongs,
                     "回忆这首诗的意思：${p.meaning}", key)
             }
-            // 作者
-            1 -> createQ("📜《${p.title}》的作者是？", p.author, otherAuthors(p.author),
-                "提示：他是 [${p.dynasty}] 代的", key)
-            // 字词意思
-            else -> {
+            // 字词意思 40%
+            in 4..7 -> {
                 val n = p.notes.random()
                 val wrongs = poems.flatMap { it.notes }.map { it.second }.filter { it != n.second }.shuffled().take(3)
                 createQ("📜《${p.title}》「${n.third}」中「${n.first}」的意思是？", n.second, wrongs,
                     "想想整首诗的意思：${p.meaning}", key)
             }
+            // 作者 20%
+            else -> createQ("📜《${p.title}》的作者是？", p.author, otherAuthors(p.author),
+                "提示：他是 [${p.dynasty}] 代的", key)
         }
     }
 
