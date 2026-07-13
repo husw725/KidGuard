@@ -19,6 +19,16 @@ echo "使用语音：$VOICE"
 for f in "$RAW"/*.m4a; do
     name=$(basename "$f" .m4a)
     word=${name//_/ }
+    # alphabet.m4a 是 26 个字母逐个朗读（字母题求助用），不是单词
+    if [ "$name" = "alphabet" ]; then
+        word="[[slnc 150]]"
+        for L in A B C D E F G H I J K L M N O P Q R S T U V W X Y Z; do word="$word $L [[slnc 220]]"; done
+        say -v "$VOICE" -r 115 -o "$TMP/$name.aiff" "$word"
+        afconvert -f m4af -d aac@44100 -b 96000 --src-quality 127 "$TMP/$name.aiff" "$TMP/$name.m4a"
+        mv "$TMP/$name.m4a" "$f"
+        echo "  alphabet     (字母表)"
+        continue
+    fi
     # 语速放慢到 140、首尾各留 150/250ms 静音，避免播放器掐掉起始音
     say -v "$VOICE" -r 140 -o "$TMP/$name.aiff" "[[slnc 150]] $word [[slnc 250]]"
     afconvert -f m4af -d aac@44100 -b 96000 --src-quality 127 "$TMP/$name.aiff" "$TMP/$name.m4a"

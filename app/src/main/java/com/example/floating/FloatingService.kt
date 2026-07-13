@@ -233,9 +233,7 @@ class FloatingService : Service() {
         return resources.getIdentifier(name, "raw", packageName)
     }
 
-    private fun playCurrentWord() {
-        val word = currentAudioWord ?: return
-        val resId = audioResId(word)
+    private fun playAudioRes(resId: Int) {
         if (resId == 0) return
         try {
             audioPlayer?.release()
@@ -244,6 +242,10 @@ class FloatingService : Service() {
                 start()
             }
         } catch (e: Exception) {}
+    }
+
+    private fun playCurrentWord() {
+        playAudioRes(audioResId(currentAudioWord ?: return))
     }
     
     private fun setImmersive(immersive: Boolean) {
@@ -571,7 +573,18 @@ class FloatingService : Service() {
     // 求助：只显示解题思路，不给答案、不判对错、不锁定，孩子想清楚后照常作答
     private fun showHelp() {
         if (locked || currentIndex >= currentQuestions.size) return
-        val tip = currentQuestions[currentIndex].tip ?: return
+        val q = currentQuestions[currentIndex]
+        // 字母题：求助直接给完整字母表（大小写对照）并朗读一遍，孩子零基础背不出字母歌
+        if ("字母" in q.text) {
+            tvFeedback.text = "💡 对照字母表找一找，跟着读：\n\n" +
+                "Aa Bb Cc Dd Ee Ff Gg\nHh Ii Jj Kk Ll Mm Nn\nOo Pp Qq Rr Ss Tt\nUu Vv Ww Xx Yy Zz\n\n" +
+                "👂 再点一次 💡 可以重听"
+            tvFeedback.setTextColor(android.graphics.Color.parseColor("#1976D2"))
+            tvFeedback.visibility = View.VISIBLE
+            playAudioRes(audioResId("alphabet"))
+            return
+        }
+        val tip = q.tip ?: return
         tvFeedback.text = "💡 想一想：$tip"
         tvFeedback.setTextColor(android.graphics.Color.parseColor("#1976D2"))
         tvFeedback.visibility = View.VISIBLE
