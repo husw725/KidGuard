@@ -107,6 +107,28 @@ object Grade3Recitation {
             ))
     )
 
+    // 教学卡朗读资源（res/raw/poem_*.m4a，由 scripts/gen_poem_audio.sh 生成，多音字已同音字替换保证读对）
+    private val audioRes = mapOf(
+        "所见" to "poem_suo_jian", "望洞庭" to "poem_wang_dongting", "山行" to "poem_shan_xing",
+        "夜书所见" to "poem_ye_shu_suo_jian", "舟夜书所见" to "poem_zhou_ye_shu_suo_jian",
+        "早发白帝城" to "poem_zao_fa_bai_di", "鹿柴" to "poem_lu_zhai", "望天门山" to "poem_wang_tian_men_shan",
+        "饮湖上初晴后雨" to "poem_yin_hu_shang", "采莲曲" to "poem_cai_lian_qu", "司马光" to "poem_si_ma_guang",
+        "秋天的雨" to "poem_qiu_tian_de_yu", "大自然的声音" to "poem_da_zi_ran_de_sheng_yin"
+    )
+
+    // 教学卡显示文本的多音字注音（考查题不注，防泄题）
+    private val pinyinNotes = listOf(
+        "朝辞" to "朝(zhāo)辞", "一日还" to "一日还(huán)", "万重山" to "万重(chóng)山",
+        "鹿柴" to "鹿柴(zhài)", "挑促织" to "挑(tiǎo)促织", "没水中" to "没(mò)水中",
+        "浓抹" to "浓抹(mǒ)", "石径斜" to "石径斜(xié)", "查慎行" to "查(zhā)慎行"
+    )
+
+    private fun annotate(text: String): String {
+        var t = text
+        pinyinNotes.forEach { (from, to) -> t = t.replace(from, to) }
+        return t
+    }
+
     // 掌握度键：poem-诗名 / saying-前4字 / passage-课文名
     private val allKeys: List<String> by lazy {
         poems.map { "poem-${it.title}" } + sayings.map { "saying-${it.text.take(4)}" } + passages.map { "passage-${it.name}" }
@@ -152,14 +174,15 @@ object Grade3Recitation {
         val key = "poem-${p.title}"
         if (teach) {
             // 教学卡 2/3 问下一句（逼着把整首读完）、1/3 问作者——只问作者太单调，也背不下诗
-            val header = "📜 跟我学一首新诗\n\n《${p.title}》 [${p.dynasty}] ${p.author}\n${p.lines.joinToString("\n")}\n\n💬 意思：${p.meaning}\n\n读一读，问题："
+            val header = annotate("📜 跟我学一首新诗 🔊\n\n《${p.title}》 [${p.dynasty}] ${p.author}\n${p.lines.joinToString("\n")}\n\n💬 意思：${p.meaning}\n\n读一读，问题：")
+            val audio = audioRes[p.title]
             if (Random.nextInt(3) < 2) {
                 val i = Random.nextInt(p.lines.size - 1)
                 val wrongs = poems.filter { it.title != p.title }.flatMap { it.lines }.map { clean(it) }.shuffled().take(3)
                 return createQ(header + "「${clean(p.lines[i])}」的下一句是？", clean(p.lines[i + 1]), wrongs,
-                    "答案就在上面的诗里，找到这一句再往下读", key)
+                    "答案就在上面的诗里，找到这一句再往下读", key, audio)
             }
-            return createQ(header + "这首诗的作者是谁？", p.author, otherAuthors(p.author), "答案就在上面的诗里，找一找作者的名字", key)
+            return createQ(header + "这首诗的作者是谁？", p.author, otherAuthors(p.author), "答案就在上面的诗里，找一找作者的名字", key, audio)
         }
         return when (Random.nextInt(10)) {
             // 补下句 40%
@@ -204,7 +227,7 @@ object Grade3Recitation {
 
     private fun passageQuestion(p: Passage, teach: Boolean): Question {
         val key = "passage-${p.name}"
-        if (teach) return createQ(p.teachText, p.teachAnswer, p.teachWrongs, "答案就在上面的课文里", key)
+        if (teach) return createQ(p.teachText, p.teachAnswer, p.teachWrongs, "答案就在上面的课文里", key, audioRes[p.name])
         val b = p.blanks.random()
         return createQ(b.first, b.second, b.third, "回忆课文《${p.name}》，想想它把这个东西比作了什么", key)
     }
@@ -215,8 +238,9 @@ object Grade3Recitation {
     private fun otherMeanings(correct: String): List<String> =
         sayings.map { it.meaning }.filter { it != correct }.shuffled().take(3)
 
-    private fun createQ(text: String, correct: String, wrongs: List<String>, tip: String?, key: String): Question {
+    private fun createQ(text: String, correct: String, wrongs: List<String>, tip: String?, key: String,
+                        readAloud: String? = null): Question {
         val opts = (wrongs.filter { it != correct }.distinct().take(3) + correct).shuffled()
-        return Question(text, opts, opts.indexOf(correct), tip = tip, masteryKey = key)
+        return Question(text, opts, opts.indexOf(correct), tip = tip, masteryKey = key, readAloud = readAloud)
     }
 }

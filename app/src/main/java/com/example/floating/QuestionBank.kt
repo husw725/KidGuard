@@ -14,7 +14,8 @@ data class Question(
     val audioWord: String? = null,  // 非空 = “听音选图”题：朗读该英文单词，选项为 emoji 图片
     val tip: String? = null,        // 答错时显示的一句话讲解（点中误区）
     val inputAnswer: String? = null, // 非空 = 手输得数题（数字键盘），不使用 options
-    val masteryKey: String? = null   // 非空 = 三上必背内容（先教后测），答题后按此键更新掌握度
+    val masteryKey: String? = null,  // 非空 = 三上必背内容（先教后测），答题后按此键更新掌握度
+    val readAloud: String? = null    // 非空 = 教学卡朗读的 res/raw 资源名（如 poem_shan_xing）
 ) {
     init {
         if (inputAnswer == null) {  // 输入题不依赖 options
@@ -35,6 +36,7 @@ data class Question(
         if (tip != null) obj.put("tip", tip)
         if (inputAnswer != null) obj.put("inputAnswer", inputAnswer)
         if (masteryKey != null) obj.put("masteryKey", masteryKey)
+        if (readAloud != null) obj.put("readAloud", readAloud)
         return obj
     }
 
@@ -67,10 +69,11 @@ data class Question(
             val tip = if (obj.has("tip")) obj.getString("tip") else null
             val inputAnswer = if (obj.has("inputAnswer")) obj.getString("inputAnswer") else null
             val masteryKey = if (obj.has("masteryKey")) obj.getString("masteryKey") else null
+            val readAloud = if (obj.has("readAloud")) obj.getString("readAloud") else null
             if (inputAnswer != null) return Question(text, emptyList(), 0, audioWord, tip, inputAnswer, masteryKey)
             // 保持原始数据完整性，如果原始数据有问题，强制修正
             return try {
-                Question(text, opts, correctIndex, audioWord, tip, masteryKey = masteryKey)
+                Question(text, opts, correctIndex, audioWord, tip, masteryKey = masteryKey, readAloud = readAloud)
             } catch (e: Exception) {
                 // 简单处理数据源错误，如果导入数据不规范则返回默认结构
                 val safeOpts = (opts.distinct().take(3) + "补全").shuffled()

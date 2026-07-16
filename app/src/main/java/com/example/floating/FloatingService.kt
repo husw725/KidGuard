@@ -244,7 +244,11 @@ class FloatingService : Service() {
         } catch (e: Exception) {}
     }
 
+    private var currentReadAloud: String? = null   // 教学卡朗读资源名（古诗/课文）
+
     private fun playCurrentWord() {
+        val poem = currentReadAloud
+        if (poem != null) { playAudioRes(audioResId(poem)); return }
         playAudioRes(audioResId(currentAudioWord ?: return))
     }
     
@@ -469,6 +473,7 @@ class FloatingService : Service() {
 
         // 听音选图题：播放单词发音、放大 emoji 选项、显示重听按钮
         currentAudioWord = q.audioWord
+        currentReadAloud = q.readAloud?.takeIf { audioResId(it) != 0 }   // 教学卡古诗/课文朗读
         val isAudio = q.audioWord != null
         val hasAudio = isAudio && audioResId(q.audioWord!!) != 0
         if (isAudio && !hasAudio) {
@@ -482,7 +487,7 @@ class FloatingService : Service() {
         if (currentIndex == currentQuestions.size - 1) {
             tvQuestion.text = "🐉 大魔王题！打败它就通关啦！\n\n${tvQuestion.text}"
         }
-        btnReplayAudio.visibility = if (isAudio) View.VISIBLE else View.GONE
+        btnReplayAudio.visibility = if (isAudio || currentReadAloud != null) View.VISIBLE else View.GONE
         // 有思路可讲（tip 非空）才显示求助按钮；语文认读/英语听音题多数无 tip，自然不显示
         btnHelp.visibility = if (q.tip != null) View.VISIBLE else View.GONE
 
@@ -506,7 +511,7 @@ class FloatingService : Service() {
         }
 
         setButtonsEnabled(true); locked = false; tvFeedback.visibility = View.INVISIBLE
-        if (hasAudio) handler.postDelayed({ playCurrentWord() }, 350)
+        if (hasAudio || currentReadAloud != null) handler.postDelayed({ playCurrentWord() }, 350)
     }
 
     private fun setButtonsEnabled(e: Boolean) {
